@@ -30,9 +30,10 @@ code addresses are specific to this build.
 ## How to play (ready-made build with launcher)
 1. Run `launcher\build.bat` — it creates `dist\CrazyTaxi2_<version>\` (the "ready version").
 2. Open `dist\CrazyTaxi2_<version>\CrazyTaxi2.exe`.
-3. Click **SELECT FILES** and pick the `.gdi` / `track03.bin`. The launcher validates the disc, extracts the files
-   (progress bar) and unlocks **PLAY**.
-4. **PLAY** generates C code from your disc, compiles it (slow the first time) and starts the game.
+3. Click **SELECT FILES** and pick the `.gdi` / `track03.bin`. The launcher validates the disc and extracts the files
+   (progress bar), then generates the C code from your disc and compiles the game (second progress bar, a few minutes,
+   log in `build.log`). Only then is **PLAY** unlocked.
+4. **PLAY** starts the game.
 
 ## Developer mode
 `jogar.bat "C:\path\to\dump"` — extracts, analyzes, generates C, compiles and runs directly.

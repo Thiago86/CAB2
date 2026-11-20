@@ -23,6 +23,8 @@ static int g_ready=0, g_busy=0, g_exit=1;
 static wchar_t g_status[600]; static int g_err=0;
 static char g_exedir[1100];                     /* pasta do .exe, UTF-8, com '/' no fim */
 static char g_track[1024];
+static int g_phase=0;                           /* 1 extraindo, 2 gerando/compilando o jogo */
+static HANDLE g_bp=0; static DWORD g_bt1=0; static int g_bpct=0, g_bbase=-1; static wchar_t g_bmsg[120];
 
 static wchar_t *u8w(const char *u){ static wchar_t b[4][1200]; static int k=0; k=(k+1)&3; MultiByteToWideChar(CP_UTF8,0,u,-1,b[k],1199); b[k][1199]=0; return b[k]; }
 static void w8(const wchar_t *w,char *o,size_t n){ WideCharToMultiByte(CP_UTF8,0,w,-1,o,(int)n,0,0); o[n-1]=0; }
@@ -61,15 +63,15 @@ static void paint(HDC wdc){
         { HDC d=CreateCompatibleDC(m); HBITMAP b=CreateCompatibleBitmap(m,1,1); SelectObject(d,b); SetPixel(d,0,0,RGB(0,0,0)); BLENDFUNCTION bf; bf.BlendOp=AC_SRC_OVER; bf.BlendFlags=0; bf.SourceConstantAlpha=150; bf.AlphaFormat=0; AlphaBlend(m,pn.left,pn.top,pn.right-pn.left,pn.bottom-pn.top,d,0,0,1,1,bf); DeleteDC(d); DeleteObject(b); }
         RECT t1={pn.left+sx(12),pn.top+sx(8),pn.right-sx(12),pn.top+sx(44)};
         if(g_busy){
-            long long tot=g_core.total, dn=g_core.done; int pct=tot>0?(int)(dn*100/tot):0; if(pct>100) pct=100;
-            wchar_t h[200]; if(st==1) lstrcpyW(h,L"VERIFYING DISC..."); else wsprintfW(h,L"EXTRACTING GAME...  %d%%",pct);
+            long long tot=g_core.total, dn=g_core.done; if(g_phase==2){ tot=100; dn=g_bpct; } int pct=tot>0?(int)(dn*100/tot):0; if(pct>100) pct=100;
+            wchar_t h[200]; if(g_phase==2) wsprintfW(h,L"%s  %d%%",g_bmsg,pct); else if(st==1) lstrcpyW(h,L"VERIFYING DISC..."); else wsprintfW(h,L"EXTRACTING GAME...  %d%%",pct);
             text(m,h,t1,g_f1,RGB(255,255,255),DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
             RECT bar={pn.left+sx(12),pn.top+sx(48),pn.right-sx(12),pn.top+sx(78)};
             HBRUSH bk=CreateSolidBrush(RGB(20,20,20)); HPEN pe=CreatePen(PS_SOLID,2,RGB(255,200,30)); SelectObject(m,bk); SelectObject(m,pe); RoundRect(m,bar.left,bar.top,bar.right,bar.bottom,10,10); DeleteObject(bk); DeleteObject(pe);
             int iw=bar.right-bar.left-6, fw=tot>0?(int)((long long)iw*dn/tot):0;
             if(fw>0){ RECT a={bar.left+3,bar.top+3,bar.left+3+fw,(bar.top+bar.bottom)/2}, b={bar.left+3,(bar.top+bar.bottom)/2,bar.left+3+fw,bar.bottom-3}; HBRUSH b1=CreateSolidBrush(RGB(255,205,40)), b2=CreateSolidBrush(RGB(240,140,0)); FillRect(m,&a,b1); FillRect(m,&b,b2); DeleteObject(b1); DeleteObject(b2);
                 int sq=(bar.bottom-bar.top-6)/2; if(sq<4) sq=4; HBRUSH bb=CreateSolidBrush(RGB(30,20,0)); for(int x=0,c=0;x<fw;x+=sq,c++){ if(c%2) continue; RECT q={bar.left+3+x,bar.top+3,bar.left+3+(x+sq<fw?x+sq:fw),bar.top+3+sq}; FillRect(m,&q,bb); } DeleteObject(bb); }
-            wsprintfW(l2,L"%s   (%d / %d MB)",u8w(g_core.cur),(int)(dn>>20),(int)(tot>>20));
+            if(g_phase==2) lstrcpyW(l2,L"Building the game from your disc. The first time takes a few minutes - please wait."); else wsprintfW(l2,L"%s   (%d / %d MB)",u8w(g_core.cur),(int)(dn>>20),(int)(tot>>20));
             RECT t2={pn.left+sx(12),pn.top+sx(82),pn.right-sx(12),pn.bottom-sx(4)}; text(m,l2,t2,g_f2,RGB(255,230,150),DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS);
         } else {
             RECT t={pn.left+sx(12),pn.top+sx(8),pn.right-sx(12),pn.bottom-sx(8)};
@@ -90,6 +92,44 @@ static int load_ini(void){
     char a[1200]; snprintf(a,sizeof a,"%sdisc/1ST_READ.BIN",g_exedir); t=lc_fopen(a,"rb"); if(!t) return 0; fclose(t);
     snprintf(a,sizeof a,"%sdisc/IP.BIN",g_exedir); t=lc_fopen(a,"rb"); if(!t) return 0; fclose(t); return 1; }
 
+
+/* ---------- fase 2: gerar o C a partir do disco e compilar (jogar.bat em modo CT2_BUILD_ONLY, janela oculta) ---------- */
+static int read_small(const char *rel,char *out,size_t n){ char p[1200]; snprintf(p,sizeof p,"%s%s",g_exedir,rel); FILE *f=lc_fopen(p,"rb"); if(!f) return 0; size_t r=fread(out,1,n-1,f); fclose(f); out[r]=0; while(r&&(out[r-1]=='\r'||out[r-1]=='\n'||out[r-1]==' ')) out[--r]=0; return 1; }
+static int needs_build(void){ char a[200],b[200]; if(!read_small("ct2.exe",a,2)) return 1; if(!read_small("ct2.ver",a,sizeof a)||!read_small("VERSION.txt",b,sizeof b)) return 1; return strcmp(a,b)!=0; }
+static void kill_build(void){ if(!g_bp) return; DWORD pid=GetProcessId(g_bp); wchar_t c[100]; wsprintfW(c,L"taskkill /PID %lu /T /F",pid); STARTUPINFOW si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si; memset(&pi,0,sizeof pi); if(CreateProcessW(0,c,0,0,FALSE,CREATE_NO_WINDOW,0,0,&si,&pi)){ WaitForSingleObject(pi.hProcess,5000); CloseHandle(pi.hThread); CloseHandle(pi.hProcess); } }
+static void build_done(int ok){ if(g_bp){ CloseHandle(g_bp); g_bp=0; } g_busy=0; g_phase=0; KillTimer(g_hw,1);
+    if(ok){ g_ready=1; set_status(L"Game ready! Click PLAY.",0); } else { g_ready=0; set_status(L"The build failed. Open build.log (in the game folder) to see why, then try SELECT FILES again.",1); } }
+static void start_build(void){
+    char d[1200]; lc_dirname(g_track,d,sizeof d); size_t n=strlen(d); while(n>3&&(d[n-1]=='/'||d[n-1]=='\\')) d[--n]=0;
+    wchar_t ex[1200], dw[1200], lg[1300]; lstrcpyW(ex,u8w(g_exedir)); lstrcpyW(dw,u8w(d));
+    for(wchar_t *c=ex;*c;c++) if(*c==L'/') *c=L'\\';
+    for(wchar_t *c=dw;*c;c++) if(*c==L'/') *c=L'\\';
+    wsprintfW(lg,L"%sbuild.log",ex);
+    SECURITY_ATTRIBUTES sa; sa.nLength=sizeof sa; sa.lpSecurityDescriptor=0; sa.bInheritHandle=TRUE;
+    HANDLE h=CreateFileW(lg,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0);
+    HANDLE hin=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,0);
+    SetEnvironmentVariableW(L"CT2_SKIP_EXTRACT",L"1"); SetEnvironmentVariableW(L"CT2_BUILD_ONLY",L"1");
+    static wchar_t cmd[3000]; wsprintfW(cmd,L"cmd.exe /c \"\"%sjogar.bat\" \"%s\"\"",ex,dw);
+    STARTUPINFOW si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si; si.dwFlags=STARTF_USESTDHANDLES|STARTF_USESHOWWINDOW; si.wShowWindow=SW_HIDE; si.hStdOutput=h; si.hStdError=h; si.hStdInput=hin; memset(&pi,0,sizeof pi);
+    BOOL ok=h!=INVALID_HANDLE_VALUE&&CreateProcessW(0,cmd,0,0,TRUE,CREATE_NO_WINDOW,0,ex,&si,&pi);
+    SetEnvironmentVariableW(L"CT2_BUILD_ONLY",NULL);
+    if(h!=INVALID_HANDLE_VALUE) CloseHandle(h); if(hin!=INVALID_HANDLE_VALUE) CloseHandle(hin);
+    if(!ok){ g_busy=0; g_phase=0; g_ready=0; KillTimer(g_hw,1); set_status(L"Could not start the build (jogar.bat must be in the same folder as CrazyTaxi2.exe).",1); return; }
+    CloseHandle(pi.hThread); g_bp=pi.hProcess; g_phase=2; g_busy=1; g_bpct=0; g_bbase=-1; g_bt1=GetTickCount(); lstrcpyW(g_bmsg,L"STARTING..."); set_status(L"",0); SetTimer(g_hw,1,500,0); }
+static void build_poll(void){
+    static char buf[1<<17]; char p[1200]; snprintf(p,sizeof p,"%sbuild.log",g_exedir); FILE *f=lc_fopen(p,"rb"); size_t r=0; if(f){ r=fread(buf,1,sizeof buf-1,f); fclose(f); } buf[r]=0;
+    int base=2; const wchar_t *m=L"STARTING...";
+    if(strstr(buf,"[1/3] Gerando")){ base=5; m=L"ANALYZING GAME CODE..."; }
+    if(strstr(buf,"[2/5]")){ base=8; m=L"MAPPING FUNCTIONS..."; }
+    if(strstr(buf,"[3/5]")){ base=18; m=L"TRANSLATING CODE..."; }
+    if(strstr(buf,"[4/5]")){ base=28; m=L"PREPARING TO COMPILE..."; }
+    if(strstr(buf,"[2/3] Compilando")){ int c=0; for(const char *q=buf;(q=strstr(q,"\ncompilando "));q++) c++; base=30+c*65/14; if(base>95) base=95; m=L"COMPILING GAME..."; }
+    if(strstr(buf,"ligando ct2.exe")){ base=96; m=L"LINKING..."; }
+    lstrcpyW(g_bmsg,m);
+    DWORD now=GetTickCount(); if(base!=g_bbase){ g_bbase=base; g_bt1=now; }
+    int creep=(int)((now-g_bt1)/5000); if(creep>7) creep=7; if(base>=96) creep=0; int pct=base+creep; if(pct>g_bpct) g_bpct=pct; if(g_bpct>99) g_bpct=99;
+    DWORD ec=STILL_ACTIVE; if(g_bp&&GetExitCodeProcess(g_bp,&ec)&&ec!=STILL_ACTIVE){ int ok=(ec==0)&&!needs_build(); build_done(ok); } }
+
 static DWORD WINAPI worker(LPVOID p){ lc_extract(&g_core); return 0; }
 
 static void pick_files(void){
@@ -103,7 +143,7 @@ static void pick_files(void){
     snprintf(g_track,sizeof g_track,"%s",g_core.track);
     snprintf(g_core.outdir,sizeof g_core.outdir,"%sdisc",g_exedir);
     { char o2[1200]; snprintf(o2,sizeof o2,"%sout",g_exedir); lc_mkdirs(o2); snprintf(g_core.listfile,sizeof g_core.listfile,"%sout/disc_filelist.txt",g_exedir); }
-    g_ready=0; g_busy=1; set_status(L"",0); g_core.stage=1;
+    g_ready=0; g_busy=1; g_phase=1; set_status(L"",0); g_core.stage=1;
     g_th=CreateThread(0,0,worker,0,0,0); SetTimer(g_hw,1,40,0); InvalidateRect(g_hw,0,FALSE); }
 
 static void do_play(void){
@@ -111,7 +151,7 @@ static void do_play(void){
     wchar_t ex[1200], dw[1200]; lstrcpyW(ex,u8w(g_exedir)); lstrcpyW(dw,u8w(d));
     for(wchar_t *c=ex;*c;c++) if(*c==L'/') *c=L'\\';
     for(wchar_t *c=dw;*c;c++) if(*c==L'/') *c=L'\\';
-    SetEnvironmentVariableW(L"CT2_SKIP_EXTRACT",L"1");
+    SetEnvironmentVariableW(L"CT2_SKIP_EXTRACT",L"1"); SetEnvironmentVariableW(L"CT2_BUILD_ONLY",NULL);
     static wchar_t cmd[3000]; wsprintfW(cmd,L"cmd.exe /c \"\"%sjogar.bat\" \"%s\"\"",ex,dw);
     STARTUPINFOW si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si; memset(&pi,0,sizeof pi);
     if(!CreateProcessW(0,cmd,0,0,FALSE,CREATE_NEW_CONSOLE,0,ex,&si,&pi)){ set_status(L"Could not open jogar.bat (it must be in the same folder as CrazyTaxi2.exe).",1); InvalidateRect(g_hw,0,FALSE); return; }
@@ -125,11 +165,11 @@ static LRESULT CALLBACK wp(HWND h,UINT m,WPARAM w,LPARAM l){
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); paint(dc); EndPaint(h,&ps); return 0; }
     case WM_ERASEBKGND: return 1;
     case WM_TIMER:
-        if(g_busy&&(g_core.stage==3||g_core.stage<0)){
-            WaitForSingleObject(g_th,2000); CloseHandle(g_th); g_th=0; g_busy=0; KillTimer(h,1);
-            if(g_core.stage==3){ g_ready=1; save_ini(); set_status(L"Game extracted! Click PLAY.",0); }
-            else { g_ready=0; set_status(u8w(g_core.msg),1); }
-        }
+        if(g_busy&&g_phase==1&&(g_core.stage==3||g_core.stage<0)){
+            WaitForSingleObject(g_th,2000); CloseHandle(g_th); g_th=0;
+            if(g_core.stage==3){ save_ini(); start_build(); }
+            else { g_busy=0; g_phase=0; KillTimer(h,1); g_ready=0; set_status(u8w(g_core.msg),1); }
+        } else if(g_busy&&g_phase==2) build_poll();
         InvalidateRect(h,0,FALSE); return 0;
     case WM_LBUTTONDOWN: { int x=(short)LOWORD(l), y=(short)HIWORD(l);
         if(g_busy) return 0;
@@ -137,7 +177,7 @@ static LRESULT CALLBACK wp(HWND h,UINT m,WPARAM w,LPARAM l){
         return 0; }
     case WM_SETCURSOR: { POINT p; GetCursorPos(&p); ScreenToClient(h,&p); if(LOWORD(l)==HTCLIENT&&!g_busy&&(over(p.x,p.y,&R_SEL)||(g_ready&&over(p.x,p.y,&R_PLAY)))){ SetCursor(LoadCursor(0,IDC_HAND)); return TRUE; } break; }
     case WM_KEYDOWN: if(w==VK_RETURN&&g_ready&&!g_busy) do_play(); else if(w==VK_ESCAPE) PostMessage(h,WM_CLOSE,0,0); return 0;
-    case WM_CLOSE: if(g_busy){ g_core.cancel=1; if(g_th) WaitForSingleObject(g_th,5000); } DestroyWindow(h); return 0;
+    case WM_CLOSE: if(g_busy){ g_core.cancel=1; if(g_th) WaitForSingleObject(g_th,5000); kill_build(); } DestroyWindow(h); return 0;
     case WM_DESTROY: PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(h,m,w,l); }
@@ -157,8 +197,8 @@ int main(void){
     int ww=r.right-r.left, wh=r.bottom-r.top, x=wa.left+((int)aw-ww)/2, y=wa.top+((int)ah-wh)/2; if(y<wa.top) y=wa.top;
     g_hw=CreateWindowW(L"CT2Launcher",L"Crazy Taxi 2",st,x,y,ww,wh,0,0,wc.hInstance,0);
     { HICON ic=LoadIconW(wc.hInstance,MAKEINTRESOURCEW(1)); if(ic){ SendMessageW(g_hw,WM_SETICON,0,(LPARAM)ic); SendMessageW(g_hw,WM_SETICON,1,(LPARAM)ic); } }
-    if(load_ini()) { g_ready=1; set_status(L"Game ready. Click PLAY (or SELECT FILES to choose another disc).",0); }
+    int auto_build=0; if(load_ini()) { if(needs_build()) auto_build=1; else { g_ready=1; set_status(L"Game ready. Click PLAY (or SELECT FILES to choose another disc).",0); } }
     else set_status(L"Click SELECT FILES and choose the .gdi (or track03.bin) of your Crazy Taxi 2 disc. PLAY unlocks after the extraction.",0);
-    ShowWindow(g_hw,SW_SHOW); UpdateWindow(g_hw);
+    ShowWindow(g_hw,SW_SHOW); UpdateWindow(g_hw); if(auto_build) start_build();
     MSG msg; while(GetMessageW(&msg,0,0,0)>0){ TranslateMessage(&msg); DispatchMessageW(&msg); }
     return g_exit; }

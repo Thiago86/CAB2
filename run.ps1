@@ -34,7 +34,8 @@ Py (Join-Path $t "make_scan_list.py") $out $rc
 
 Write-Host "[4/5] Compilando e testando o C gerado..."
 $cc = (Get-Command gcc -ErrorAction SilentlyContinue), (Get-Command clang -ErrorAction SilentlyContinue) | Where-Object { $_ } | Select-Object -First 1
-if ($cc) {
+if ($env:CT2_SKIP_TEST -eq "1") { Write-Host "(teste do C gerado pulado: o jogo nao precisa dele)" }
+elseif ($cc) {
   $srcs = @("test_ct2.c") + (Get-ChildItem $rc -Filter "ct2_funcs_*.c" | ForEach-Object { $_.Name }) + @("ct2_dispatch.c","sh4rt.c")
   Push-Location $rc
   try {
