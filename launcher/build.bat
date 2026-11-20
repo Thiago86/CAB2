@@ -5,8 +5,6 @@ set "RESULT=0"
 set "BUNDLE=1"
 set "WITHC="
 for %%A in (%*) do if /i "%%A"=="nobundle" set "BUNDLE="
-if exist recomp\ct2_funcs_00.c set "WITHC=1"
-for %%A in (%*) do if /i "%%A"=="public" set "WITHC="
 rem Gera a "versao pronta": dist\CrazyTaxi2_<versao>\  com CrazyTaxi2.exe (icone embutido) e so as pastas/arquivos necessarios.
 rem Uso: launcher\build.bat          (sem o C gerado do disco - e o que se distribui; ele e gerado no 1o PLAY)
 rem      launcher\build.bat nobundle (sem o Python/compilador portateis dentro: o jogo os baixa na 1a vez)
@@ -16,6 +14,9 @@ if not exist VERSION.txt cd /d "%~dp0.."
 if not exist VERSION.txt ( echo ERRO: nao achei VERSION.txt. Este build.bat precisa ficar na pasta "launcher" do projeto ^(ou na raiz dele^), junto de recomp, tools e launcher\assets. & set "RESULT=1" & goto END )
 if not exist launcher\assets\bg.raw ( echo ERRO: nao achei launcher\assets. Extraia o zip inteiro e rode o build.bat que esta dentro da pasta launcher. & set "RESULT=1" & goto END )
 echo Pasta do projeto: %CD%
+if exist recomp\ct2_funcs_00.c set "WITHC=1"
+for %%A in (%*) do if /i "%%A"=="public" set "WITHC="
+if defined WITHC ( echo C gerado encontrado em recomp: sera incluido ^(uso pessoal^). ) else ( echo C gerado NAO encontrado em recomp ou modo public: a versao pronta o gerara do disco ^(precisa de Python^). )
 set /p VER=<VERSION.txt
 set "D=dist\CrazyTaxi2_%VER%"
 set "LCC="
@@ -46,14 +47,14 @@ if defined WITHC (
 if errorlevel 8 ( echo Falha ao copiar recomp & set "RESULT=1" & goto END )
 if defined BUNDLE (
   echo Incluindo o compilador portatil na versao pronta ^(sem baixar nada no PC de quem for jogar^)...
-  call :GETCC
   if defined WITHC (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain" -Only compiler
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain" -Only compiler -Force
   ) else (
     echo Sem o C gerado: incluindo tambem o Python portatil ^(baixa 1 vez se ainda nao estiver em toolchain^)...
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain" -Only all
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain" -Only all -Force
   )
   if exist toolchain robocopy toolchain "%D%\toolchain" /E /XD cache /NFL /NDL /NJH /NJS >nul
+  if not exist "%D%\toolchain\w64devkit\bin\gcc.exe" ( echo ERRO: o compilador portatil nao foi incluido na versao pronta ^(veja as mensagens acima^). & set "RESULT=1" & goto END )
 )
 if defined WITHC (
   echo Incluindo o C gerado do disco ^(uso pessoal: NAO distribua esta pasta; use "build.bat public" para uma versao distribuivel^).

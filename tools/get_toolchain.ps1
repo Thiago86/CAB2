@@ -3,7 +3,7 @@
   Uso: get_toolchain.ps1 -Dest C:\pasta\toolchain [-Only all|python|compiler]
   Fontes oficiais: python.org (Python embeddable) e github.com/skeeto/w64devkit (GCC + binutils). Precisa de internet so nessa vez.
 #>
-param([Parameter(Mandatory=$true)][string]$Dest, [ValidateSet("all","python","compiler")][string]$Only="all")
+param([Parameter(Mandatory=$true)][string]$Dest, [ValidateSet("all","python","compiler")][string]$Only="all", [switch]$Force)
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
@@ -14,11 +14,13 @@ $GccUrl = "https://github.com/skeeto/w64devkit/releases/download/v$GccVer/w64dev
 New-Item -ItemType Directory -Force $Dest | Out-Null
 
 function Have-Python {
+  if ($Force) { return (Test-Path (Join-Path $Dest "python\python.exe")) }
   $p = Join-Path $Dest "python\python.exe"; if (Test-Path $p) { return $true }
   foreach ($n in "python","py") { $c = Get-Command $n -ErrorAction SilentlyContinue; if ($c) { try { $o = & $c.Source -c "import sys;print(sys.version_info[0])" 2>$null; if ($LASTEXITCODE -eq 0 -and "$o".Trim() -eq "3") { return $true } } catch {} } }
   return $false
 }
 function Have-Compiler {
+  if ($Force) { return (Test-Path (Join-Path $Dest "w64devkit\bin\gcc.exe")) }
   if (Test-Path (Join-Path $Dest "w64devkit\bin\gcc.exe")) { return $true }
   foreach ($n in "gcc","clang") { if (Get-Command $n -ErrorAction SilentlyContinue) { return $true } }
   foreach ($d in "C:\msys64\ucrt64\bin","C:\msys64\mingw64\bin","C:\mingw64\bin","C:\MinGW\bin","C:\Program Files\LLVM\bin") { if ((Test-Path "$d\gcc.exe") -or (Test-Path "$d\clang.exe")) { return $true } }
