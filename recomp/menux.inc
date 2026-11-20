@@ -80,7 +80,7 @@ static void mx_load(void){ if(mx_loaded) return; mx_loaded=1; int keep=GENV("CT2
         else if(keep){ if(sscanf(l,"timer_off=%d",&v)==1) mx_timer_off=v; else if(sscanf(l,"unlock=%d",&v)==1) mx_unlock=v; } } fclose(f); }
     if(!keep){ mx_timer_off=0; mx_unlock=0; }
     { const char*e; if((e=GENV("CT2_UPSCALE"))) ta_upscale=atoi(e); if((e=GENV("CT2_ASPECT"))) ta_aspect=atoi(e); if((e=GENV("CT2_RESI"))) ta_res_i=atoi(e); if((e=GENV("CT2_AA"))) ta_aa_mode=atoi(e); }
-    if(ta_res_i<0||ta_res_i>19) ta_res_i=2; if(ta_aspect<0||ta_aspect>2) ta_aspect=0; if(ta_upscale<100) ta_upscale=100; if(ta_upscale>200) ta_upscale=200; if(ta_aa_mode<0||ta_aa_mode>4) ta_aa_mode=0; if(mx_sens_lv<0||mx_sens_lv>7) mx_sens_lv=7; if(mx_view_opt<0||mx_view_opt>5) mx_view_opt=0; if(ta_bri_lv<0||ta_bri_lv>10) ta_bri_lv=5; ta_disp_gen++; }
+    if(ta_res_i<0||ta_res_i>29) ta_res_i=2; if(ta_aspect<0||ta_aspect>2) ta_aspect=0; if(ta_upscale<100) ta_upscale=100; if(ta_upscale>200) ta_upscale=200; if(ta_aa_mode<0||ta_aa_mode>4) ta_aa_mode=0; if(mx_sens_lv<0||mx_sens_lv>7) mx_sens_lv=7; if(mx_view_opt<0||mx_view_opt>5) mx_view_opt=0; if(ta_bri_lv<0||ta_bri_lv>10) ta_bri_lv=5; ta_disp_gen++; }
 
 /* ---- estado da tela atual (preenchido a cada quadro em menux_frame) ---- */
 enum { MXS_NONE=0, MXS_MAIN, MXS_OPT, MXS_RULES, MXS_CTRL };
@@ -237,13 +237,13 @@ static void menux_frame(void){
         int vsel=mx_vact;
         if(vsel){ for(int i=0;i<nr;i++) if(MR[i].sel){ mx_barstyle(MR[i].first,MR[i].last,0); } }
         float cx=(MR[vib].x0+MR[vib].x1)/2.f, dxb=MR[vib].x0-33.f; if(fabsf(dxb)<3.f) dxb=0.f; float xv=478.f+dxb;
-        static const char*lbl[4]={"RESOLUTION","ASPECT","UPSCALE","ANTIALIASING"}; static const char*asp[3]={"STRETCH","SIDE BARS","WIDESCREEN EXP"};
+        static const char*lbl[4]={"RES  (A: MODE)","ASPECT","UPSCALE","ANTIALIASING"}; static const char*asp[3]={"STRETCH","SIDE BARS","WIDESCREEN EXP"};
         for(int row=0;row<4;row++){   /* linhas novas no alto: y virtual -40, -4, 32, 68 */
             float y0=104.f-36.f*(4-row); int vid=V_RES+row;
             size_t n0=ntri; for(int i=MR[vib].first;i<=MR[vib].last;i++) mx_new(&tris[i]);
             mx_shift(n0,ntri-1,0,y0-MR[vib].y0); mx_barstyle(n0,ntri-1,vsel==vid);
             { char lb[32]; if(row==2) snprintf(lb,sizeof lb,"UPSCALE %d%%",ta_upscale); else snprintf(lb,sizeof lb,"%s",lbl[row]); mx_text(&gtpl,lb,cx,y0+9,1.f); }
-            char vb[48]; vb[0]=0; if(row==0){ int ri=ta_res_i%10; snprintf(vb,sizeof vb,"%dX%d %s",ta_res_tab[ri][0],ta_res_tab[ri][1],ta_res_i>=10?"FULLSCREEN":"WINDOW"); }
+            char vb[48]; vb[0]=0; if(row==0){ int ri=ta_res_i%10; snprintf(vb,sizeof vb,"%dX%d %s",ta_res_tab[ri][0],ta_res_tab[ri][1],(ta_res_i/10==2)?"BORDERLESS":(ta_res_i/10==1)?"FULLSCREEN":"WINDOW"); }
             else if(row==1) snprintf(vb,sizeof vb,"%s",asp[ta_aspect%3]); else if(row==3){ static const char*aan[5]={"OFF","BASIC","FXAA","SSAA 1.5X","SSAA 2X"}; snprintf(vb,sizeof vb,"%s",aan[(ta_aa_mode>=0&&ta_aa_mode<5)?ta_aa_mode:0]); }
             if(vb[0]){ float w=mx_textw(vb,1.f), sc=(w>232.f)?232.f/w:1.f; mx_text(&gtpl,vb,xv,y0+9+(1.f-sc)*8.f,sc); }
             else if(row==2&&nsl>0){   /* UPSCALE: clona o controle deslizante do MUSIC VOLUME */
@@ -421,8 +421,9 @@ void menux_filter(uint16_t *pb,uint8_t *rt,uint8_t *lt){
             hold|=(pr&(K_LR|K_A|(1u<<10)));    /* o jogo nao pode trocar STEREO/MONO enquanto se mexe aqui */
             if(pr&K_UP){ if(mx_vact>V_RES) mx_vact--; hold|=K_UP; }
             else if(pr&K_DN){ if(mx_vact<V_FPS){ mx_vact++; hold|=K_DN; } else { mx_vact=0; hold|=K_DN; } }
+            else if((pr&K_A)&&mx_vact==V_RES){ ta_res_i=((ta_res_i/10+1)%3)*10+ta_res_i%10; ta_disp_gen++; mx_save(); }   /* v15zzz: A troca WINDOW -> FULLSCREEN -> BORDERLESS */
             else if(pr&K_LR){ int d=(pr&K_RT)?1:-1; int ch=0;
-                if(mx_vact==V_RES){ ta_res_i=(ta_res_i+d+20)%20; ch=1; }
+                if(mx_vact==V_RES){ ta_res_i=(ta_res_i/10)*10+((ta_res_i%10)+d+10)%10; ch=1; }   /* esquerda/direita = resolucao; A = modo (janela / tela cheia / borderless) */
                 else if(mx_vact==V_ASP){ ta_aspect=(ta_aspect+d+3)%3; ch=1; }
                 else if(mx_vact==V_UPS){ int lv=mx_up_level()+d; if(lv<0) lv=0; if(lv>7) lv=7; ta_upscale=mx_up_pct[lv]; ch=1; }
                 else if(mx_vact==V_FPS){ ta_aa_mode=(ta_aa_mode+d+5)%5; ch=1; }

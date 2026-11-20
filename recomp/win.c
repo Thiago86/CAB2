@@ -46,8 +46,13 @@ static void init(void){
 /* aplica RESOLUTION (janela ou tela cheia) quando a opcao muda */
 static void disp_apply(void){
     if(!hwnd||d_gen==ta_disp_gen) return; d_gen=ta_disp_gen;
-    int ri=ta_res_i%10, full=ta_res_i>=10; int w=ta_res_tab[ri][0], h=ta_res_tab[ri][1];
-    if(full){
+    int ri=ta_res_i%10, md=ta_res_i/10, full=(md==1); int w=ta_res_tab[ri][0], h=ta_res_tab[ri][1];
+    if(md==2){   /* v15zzz: BORDERLESS = janela sem borda do tamanho do monitor, sem trocar o modo de video (alt-tab instantaneo) */
+        disp_restore(); MONITORINFO mi; memset(&mi,0,sizeof mi); mi.cbSize=sizeof mi; HMONITOR mon=MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST);
+        int mx=0,my=0,mw=GetSystemMetrics(SM_CXSCREEN),mh=GetSystemMetrics(SM_CYSCREEN); if(GetMonitorInfoA(mon,&mi)){ mx=mi.rcMonitor.left; my=mi.rcMonitor.top; mw=mi.rcMonitor.right-mi.rcMonitor.left; mh=mi.rcMonitor.bottom-mi.rcMonitor.top; }
+        SetWindowLongA(hwnd,GWL_STYLE,WS_POPUP|WS_VISIBLE);
+        SetWindowPos(hwnd,HWND_TOP,mx,my,mw,mh,SWP_FRAMECHANGED|SWP_SHOWWINDOW);
+    } else if(full){
         DEVMODEA dm; memset(&dm,0,sizeof dm); dm.dmSize=sizeof dm; dm.dmPelsWidth=(DWORD)w; dm.dmPelsHeight=(DWORD)h; dm.dmBitsPerPel=32; dm.dmFields=DM_PELSWIDTH|DM_PELSHEIGHT|DM_BITSPERPEL;
         if(ChangeDisplaySettingsA(&dm,CDS_FULLSCREEN)==DISP_CHANGE_SUCCESSFUL) d_mode=1; else disp_restore();   /* modo nao suportado: tela cheia na resolucao do desktop (a imagem e escalada) */
         SetWindowLongA(hwnd,GWL_STYLE,WS_POPUP|WS_VISIBLE);
@@ -124,6 +129,21 @@ static int key(int vk){ if(!win_active()) return 0; SHORT k=GetAsyncKeyState(vk)
 typedef struct { DWORD dwSize,dwFlags,dwXpos,dwYpos,dwZpos,dwRpos,dwUpos,dwVpos,dwButtons,dwButtonNumber,dwPOV,dwReserved1,dwReserved2; } JoyEx;
 typedef UINT (WINAPI *JoyGetPosEx)(UINT,JoyEx*);
 static JoyGetPosEx jget=0; static int jtried=0;
+typedef struct { WORD wMid,wPid; char szPname[32]; UINT v[19]; char rk[32]; char oem[260]; } JoyCaps;   /* = JOYCAPSA (VID/PID e nome do controle) */
+typedef UINT (WINAPI *JoyGetCaps)(UINT_PTR,JoyCaps*,UINT);
+static JoyGetCaps jcaps=0;
+/* perfis de layout: indices dos botoes do winmm -> botoes do Dreamcast (A embaixo, B direita, X esquerda, Y em cima) */
+typedef struct { int a,b,x,y,lb,rb,lt,rt,st,sl; } JProf;
+static const JProf jp_ps ={1,2,0,3,4,5,6,7,9,8};     /* PlayStation (DS3/DS4/DualSense): Cruz=A, Bola=B, Quadrado=X, Triangulo=Y, L1/R1 e L2/R2 = gatilhos, Options=Start, Share=Select */
+static const JProf jp_sw ={0,1,2,3,4,5,6,7,9,8};     /* Switch Pro: B(baixo)=A, A(direita)=B, Y(esq)=X, X(cima)=Y; +=Start */
+static const JProf jp_xb ={0,1,2,3,4,5,-1,-1,7,6};   /* Xbox em modo DirectInput legado */
+static const JProf jp_gen={1,2,0,3,4,5,6,7,9,8};     /* generico USB (Logitech etc.): 0=esq,1=baixo,2=direita,3=cima */
+static const JProf *jprof(const JoyCaps *c){ char n[40]; int i; for(i=0;i<31&&c->szPname[i];i++){ char ch=c->szPname[i]; n[i]=(ch>='A'&&ch<='Z')?(char)(ch+32):ch; } n[i]=0;
+    if(c->wMid==0x054C||strstr(n,"wireless controller")||strstr(n,"dualshock")||strstr(n,"dualsense")||strstr(n,"playstation")||strstr(n,"ps4")||strstr(n,"ps5")||strstr(n,"ps3")) return &jp_ps;
+    if(c->wMid==0x057E||strstr(n,"pro controller")||strstr(n,"switch")||strstr(n,"nintendo")) return &jp_sw;
+    if(strstr(n,"xbox")||strstr(n,"xinput")) return &jp_xb;
+    return &jp_gen; }
+
 static char w_st[100], w_pf[90];
 static void w_title(void){ char t[320]; snprintf(t,sizeof t,"Crazy Taxi 2 (recompilacao estatica) - v15zz  [%s]  %s  %s",ta_gpu_name(),w_pf,w_st); if(hwnd) SetWindowTextA(hwnd,t); }
 void win_status(const char*s){ snprintf(w_st,sizeof w_st,"%s",s?s:""); w_title(); }
@@ -172,21 +192,27 @@ void win_pad(uint16_t *buttons,uint8_t *rt,uint8_t *lt,uint8_t *jx,uint8_t *jy){
         if(s.lx>8000||s.lx<-8000) x=(s.lx+32768)>>8;
         if(s.ly>8000||s.ly<-8000) y=255-((s.ly+32768)>>8);
     } }
-    if(!got&&win_active()){
-        if(!jtried){ jtried=1; HMODULE m=LoadLibraryA("winmm.dll"); if(m) jget=(JoyGetPosEx)GetProcAddress(m,"joyGetPosEx"); }
-        if(jget){ for(UINT id=0;id<4;id++){ JoyEx j; memset(&j,0,sizeof j); j.dwSize=sizeof j; j.dwFlags=0xFF; if(jget(id,&j)!=0) continue;
-            if(j.dwButtons&1) b&=~(1u<<2); if(j.dwButtons&2) b&=~(1u<<1); if(j.dwButtons&4) b&=~(1u<<10); if(j.dwButtons&8) b&=~(1u<<9);
-            if(j.dwButtons&(1u<<7)||j.dwButtons&(1u<<9)||j.dwButtons&(1u<<6)) b&=~(1u<<3);
-            if(j.dwButtons&(1u<<4)) l=255; if(j.dwButtons&(1u<<5)) r=255;
-            if(j.dwPOV!=0xFFFF&&j.dwPOV!=0xFFFFFFFFu){ DWORD p=j.dwPOV; if(p>=31500||p<=4500) b&=~(1u<<4); if(p>=4500&&p<=13500) b&=~(1u<<7); if(p>=13500&&p<=22500) b&=~(1u<<5); if(p>=22500&&p<=31500) b&=~(1u<<6); }
+    if(!got&&win_active()){   /* v15zzz: qualquer controle generico (DirectInput/HID via winmm) com layout por perfil: PlayStation, Switch Pro, Xbox legado e generico */
+        static int jids[16], njid=0; static const JProf *jpf[16]; static DWORD lastscan=0; DWORD now=GetTickCount();
+        if(!jtried){ jtried=1; HMODULE m=LoadLibraryA("winmm.dll"); if(m){ jget=(JoyGetPosEx)GetProcAddress(m,"joyGetPosEx"); jcaps=(JoyGetCaps)GetProcAddress(m,"joyGetDevCapsA"); } }
+        if(jget&&(njid==0&&now-lastscan>1000||now-lastscan>3000)){ lastscan=now; njid=0;   /* procura controles conectados a cada poucos segundos (hot-plug) */
+            for(UINT id=0;id<16;id++){ JoyEx j; memset(&j,0,sizeof j); j.dwSize=sizeof j; j.dwFlags=0xFF; if(jget(id,&j)!=0) continue; JoyCaps c; memset(&c,0,sizeof c); if(jcaps) jcaps(id,&c,sizeof c); jids[njid]=(int)id; jpf[njid]=jprof(&c); njid++; } }
+        for(int q=0;q<njid;q++){ JoyEx j; memset(&j,0,sizeof j); j.dwSize=sizeof j; j.dwFlags=0xFF; if(jget((UINT)jids[q],&j)!=0){ njid=0; lastscan=0; break; }
+            const JProf *p=jpf[q]; DWORD B=j.dwButtons;
+            #define JB(i) ((i)>=0&&((B>>(i))&1u))
+            if(JB(p->a)) b&=~(1u<<2); if(JB(p->b)) b&=~(1u<<1); if(JB(p->x)) b&=~(1u<<10); if(JB(p->y)) b&=~(1u<<9);
+            if(JB(p->st)||JB(p->sl)) b&=~(1u<<3);
+            if(JB(p->lb)||JB(p->lt)) l=255; if(JB(p->rb)||JB(p->rt)) r=255;
+            #undef JB
+            if(j.dwPOV!=0xFFFF&&j.dwPOV!=0xFFFFFFFFu){ DWORD pv=j.dwPOV; if(pv>=31500||pv<=4500) b&=~(1u<<4); if(pv>=4500&&pv<=13500) b&=~(1u<<7); if(pv>=13500&&pv<=22500) b&=~(1u<<5); if(pv>=22500&&pv<=31500) b&=~(1u<<6); }
             int ax=(int)(j.dwXpos>>8), ay=(int)(j.dwYpos>>8); if(ax>160||ax<96) x=ax; if(ay>160||ay<96) y=ay;
-            break; } }
+            break; }   /* o primeiro controle conectado vale */
     }
     { static int fp[3]; const int fk[3]={VK_F5,VK_F6,VK_F7}; for(int q=0;q<3;q++){ int kk=key(fk[q]); if(kk&&!fp[q]) win_status(ta_toggle_dbg(q)); fp[q]=kk; } }   /* diagnostico grafico */
     { static int f4p=0; extern int ta_gpu_mode; int k4=key(VK_F4); if(k4&&!f4p){ ta_gpu_mode=!ta_gpu_mode; ta_save_settings(); win_status(ta_gpu_mode?"F4: renderizador Direct3D 11 (GPU)":"F4: renderizador por SOFTWARE (CPU)"); } f4p=k4; }   /* v15zw */
     { static int f9p=0; int k9=key(VK_F9); if(k9&&!f9p){ int on=ta_toggle_timer(); win_status(on?"F9: CRONOMETRO CONGELADO (cheat ligado)":"F9: cronometro normal (cheat desligado)"); } f9p=k9; }
     { static int f8p=0; int k8=key(VK_F8); if(k8&&!f8p){ extern void aica_voz_nota(const char*); aica_voz_nota("F8 - fala ouvida agora"); win_status("marca gravada em voz.txt"); } f8p=k8; }   /* F8: marca no voz.txt o instante em que a fala foi ouvida */
-    { static int f11p=0; int k11=key(VK_F11); if(k11&&!f11p){ ta_res_i=(ta_res_i+10)%20; ta_disp_gen++; ta_save_settings(); } f11p=k11; }   /* F11: alterna janela / tela cheia na mesma resolucao */
+    { static int f11p=0; int k11=key(VK_F11); if(k11&&!f11p){ ta_res_i=((ta_res_i/10==0)?10:0)+ta_res_i%10; ta_disp_gen++; ta_save_settings(); } f11p=k11; }   /* F11: alterna janela / tela cheia na mesma resolucao */
     { static int f10p=0; extern int ct2_hoptrace_req; int k10=key(VK_F10); if(k10&&!f10p){ ct2_hoptrace_req=1; win_status("F10: pronto - aperte Y UMA vez (grava hop_trace.txt)"); } f10p=k10; }
     { static int f12p=0; int k12=key(VK_F12); if(k12&&!f12p){ ta_dump_req=1; win_status("F12: quadro salvo em glitch_dump_NUMERO.bin (nome novo a cada vez)"); } f12p=k12; }
     /* o analogico tambem move o cursor dos menus */
