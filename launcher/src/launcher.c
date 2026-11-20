@@ -3,6 +3,12 @@
    Imagens em launcher\assets\*.raw (BGRA pre-multiplicado, geradas das artes do usuario) + icon.ico.
    Fluxo: [SELECT FILES] escolhe o .gdi ou track03.bin -> barra de progresso extrai o disco para disc\ -> libera [PLAY].
    PLAY: abre o jogar.bat com a pasta da trilha (ele gera o C se preciso, compila e roda o jogo) e o launcher fecha. */
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0601
+#endif
+#ifndef WINVER
+#define WINVER 0x0601
+#endif
 #include <windows.h>
 #include <commdlg.h>
 #include "launcher_core.h"
