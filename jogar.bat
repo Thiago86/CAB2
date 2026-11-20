@@ -2,6 +2,7 @@
 setlocal enabledelayedexpansion
 rem Crazy Taxi 2 (recompilacao estatica) - gera, compila e executa. Uso: jogar.bat [pasta_do_track03.bin]
 cd /d "%~dp0"
+if not exist run.ps1 cd /d "%~dp0.."
 set "GDI=%~1"
 set "CT2_SKIP_TEST=1"
 rem jogar.bat            -> gera/compila/executa o jogo (usa o disco que o launcher lembrou em launcher.ini)
@@ -21,7 +22,7 @@ if not exist "out\extra_usado.txt" set "REGEN=1"
 if exist "out\extra_usado.txt" ( fc /b extra_entries.txt out\extra_usado.txt >nul 2>nul || set "REGEN=1" )
 if defined REGEN (
   echo [1/3] Gerando o C a partir do disco ^(demora alguns minutos^)...
-  powershell -ExecutionPolicy Bypass -File "%~dp0run.ps1" -Gdi "%GDI%"
+  powershell -ExecutionPolicy Bypass -File "%CD%\run.ps1" -Gdi "%GDI%"
   if errorlevel 1 ( echo run.ps1 falhou. & call :PAUSE & exit /b 1 )
   copy /y extra_entries.txt out\extra_usado.txt >nul
 ) else ( echo [1/3] C ja gerado, pulando. )
@@ -35,7 +36,7 @@ set "CC="
 where clang >nul 2>nul && set "CC=clang"
 if not defined CC ( where gcc >nul 2>nul && set "CC=gcc" )
 if not defined CC ( echo Nem clang nem gcc encontrados no PATH. & call :PAUSE & exit /b 1 )
-powershell -ExecutionPolicy Bypass -File "%~dp0compile.ps1" -CC %CC%
+powershell -ExecutionPolicy Bypass -File "%CD%\compile.ps1" -CC %CC%
 if errorlevel 1 ( echo A compilacao falhou: copie as mensagens acima e envie. & call :PAUSE & exit /b 1 )
 copy /y VERSION.txt ct2.ver >nul
 
@@ -51,7 +52,7 @@ exit /b 0
 
 :OPENLAUNCHER
 if exist CrazyTaxi2.exe (
-  start "" "%~dp0CrazyTaxi2.exe"
+  start "" "%CD%\CrazyTaxi2.exe"
   exit /b 0
 )
 if not exist launcher\build.bat ( echo CrazyTaxi2.exe nao encontrado. & call :PAUSE & exit /b 1 )
@@ -61,7 +62,7 @@ if not exist "dist\CrazyTaxi2_!VER!\CrazyTaxi2.exe" (
   call launcher\build.bat
   if errorlevel 1 ( call :PAUSE & exit /b 1 )
 )
-start "" "%~dp0dist\CrazyTaxi2_!VER!\CrazyTaxi2.exe"
+start "" "%CD%\dist\CrazyTaxi2_!VER!\CrazyTaxi2.exe"
 exit /b 0
 
 :PAUSE

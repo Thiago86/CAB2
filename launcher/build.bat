@@ -27,7 +27,9 @@ if not defined RCO echo AVISO: windres nao encontrado - o .exe sai sem o icone.
 %LCC% -O2 -w -mwindows launcher\src\launcher.c %RCO% -o "%D%\CrazyTaxi2.exe" -lgdi32 -lmsimg32 -lcomdlg32 -luser32
 if errorlevel 1 ( echo A compilacao do launcher falhou: copie as mensagens acima e envie. & set "RESULT=1" & goto END )
 if exist launcher\icon_res.o del launcher\icon_res.o
-for %%F in (jogar.bat run.ps1 compile.ps1 VERSION.txt extra_entries.txt names_manual.csv intro_loading.ppm intro_adx.ppm README.md) do if exist %%F copy /y %%F "%D%\" >nul
+for %%F in (run.ps1 compile.ps1 VERSION.txt extra_entries.txt names_manual.csv intro_loading.ppm intro_adx.ppm README.md) do if exist %%F copy /y %%F "%D%\" >nul
+if not exist "%D%\launcher" mkdir "%D%\launcher"
+copy /y jogar.bat "%D%\launcher\run.bat" >nul
 robocopy launcher\assets "%D%\launcher\assets" /E /NFL /NDL /NJH /NJS >nul
 if errorlevel 8 ( echo Falha ao copiar launcher\assets & set "RESULT=1" & goto END )
 robocopy tools "%D%\tools" /E /XD __pycache__ /NFL /NDL /NJH /NJS >nul
@@ -41,7 +43,7 @@ if /i "%~1"=="withc" (
 if errorlevel 8 ( echo Falha ao copiar recomp & set "RESULT=1" & goto END )
 echo.
 echo Versao pronta criada em %D%\
-echo Abra %D%\CrazyTaxi2.exe  (ou use jogar.bat: gera/compila/executa direto)
+echo Abra %D%\CrazyTaxi2.exe  
 :END
 rem se foi aberto com duplo clique, nao fecha a janela antes de voce ler
 echo %cmdcmdline% | find /i "%~nx0" >nul && pause

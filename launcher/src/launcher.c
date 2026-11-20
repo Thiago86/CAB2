@@ -99,6 +99,7 @@ static int needs_build(void){ char a[200],b[200]; if(!read_small("ct2.exe",a,2))
 static void kill_build(void){ if(!g_bp) return; DWORD pid=GetProcessId(g_bp); wchar_t c[100]; wsprintfW(c,L"taskkill /PID %lu /T /F",pid); STARTUPINFOW si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si; memset(&pi,0,sizeof pi); if(CreateProcessW(0,c,0,0,FALSE,CREATE_NO_WINDOW,0,0,&si,&pi)){ WaitForSingleObject(pi.hProcess,5000); CloseHandle(pi.hThread); CloseHandle(pi.hProcess); } }
 static void build_done(int ok){ if(g_bp){ CloseHandle(g_bp); g_bp=0; } g_busy=0; g_phase=0; KillTimer(g_hw,1);
     if(ok){ g_ready=1; set_status(L"Game ready! Click PLAY.",0); } else { g_ready=0; set_status(L"The build failed. Open build.log (in the game folder) to see why, then try SELECT FILES again.",1); } }
+static const wchar_t *bat_rel(void){ char p[1200]; snprintf(p,sizeof p,"%slauncher/run.bat",g_exedir); FILE *f=lc_fopen(p,"rb"); if(f){ fclose(f); return L"launcher\\run.bat"; } return L"jogar.bat"; }
 static void start_build(void){
     char d[1200]; lc_dirname(g_track,d,sizeof d); size_t n=strlen(d); while(n>3&&(d[n-1]=='/'||d[n-1]=='\\')) d[--n]=0;
     wchar_t ex[1200], dw[1200], lg[1300]; lstrcpyW(ex,u8w(g_exedir)); lstrcpyW(dw,u8w(d));
@@ -109,12 +110,12 @@ static void start_build(void){
     HANDLE h=CreateFileW(lg,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,0);
     HANDLE hin=CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,0);
     SetEnvironmentVariableW(L"CT2_SKIP_EXTRACT",L"1"); SetEnvironmentVariableW(L"CT2_BUILD_ONLY",L"1");
-    static wchar_t cmd[3000]; wsprintfW(cmd,L"cmd.exe /c \"\"%sjogar.bat\" \"%s\"\"",ex,dw);
+    static wchar_t cmd[3000]; wsprintfW(cmd,L"cmd.exe /c \"\"%s%s\" \"%s\"\"",ex,bat_rel(),dw);
     STARTUPINFOW si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si; si.dwFlags=STARTF_USESTDHANDLES|STARTF_USESHOWWINDOW; si.wShowWindow=SW_HIDE; si.hStdOutput=h; si.hStdError=h; si.hStdInput=hin; memset(&pi,0,sizeof pi);
     BOOL ok=h!=INVALID_HANDLE_VALUE&&CreateProcessW(0,cmd,0,0,TRUE,CREATE_NO_WINDOW,0,ex,&si,&pi);
     SetEnvironmentVariableW(L"CT2_BUILD_ONLY",NULL);
     if(h!=INVALID_HANDLE_VALUE) CloseHandle(h); if(hin!=INVALID_HANDLE_VALUE) CloseHandle(hin);
-    if(!ok){ g_busy=0; g_phase=0; g_ready=0; KillTimer(g_hw,1); set_status(L"Could not start the build (jogar.bat must be in the same folder as CrazyTaxi2.exe).",1); return; }
+    if(!ok){ g_busy=0; g_phase=0; g_ready=0; KillTimer(g_hw,1); set_status(L"Could not start the build (launcher\\run.bat is missing next to CrazyTaxi2.exe).",1); return; }
     CloseHandle(pi.hThread); g_bp=pi.hProcess; g_phase=2; g_busy=1; g_bpct=0; g_bbase=-1; g_bt1=GetTickCount(); lstrcpyW(g_bmsg,L"STARTING..."); set_status(L"",0); SetTimer(g_hw,1,500,0); }
 static void build_poll(void){
     static char buf[1<<17]; char p[1200]; snprintf(p,sizeof p,"%sbuild.log",g_exedir); FILE *f=lc_fopen(p,"rb"); size_t r=0; if(f){ r=fread(buf,1,sizeof buf-1,f); fclose(f); } buf[r]=0;
@@ -152,9 +153,9 @@ static void do_play(void){
     for(wchar_t *c=ex;*c;c++) if(*c==L'/') *c=L'\\';
     for(wchar_t *c=dw;*c;c++) if(*c==L'/') *c=L'\\';
     SetEnvironmentVariableW(L"CT2_SKIP_EXTRACT",L"1"); SetEnvironmentVariableW(L"CT2_BUILD_ONLY",NULL);
-    static wchar_t cmd[3000]; wsprintfW(cmd,L"cmd.exe /c \"\"%sjogar.bat\" \"%s\"\"",ex,dw);
+    static wchar_t cmd[3000]; wsprintfW(cmd,L"cmd.exe /c \"\"%s%s\" \"%s\"\"",ex,bat_rel(),dw);
     STARTUPINFOW si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si; memset(&pi,0,sizeof pi);
-    if(!CreateProcessW(0,cmd,0,0,FALSE,CREATE_NEW_CONSOLE,0,ex,&si,&pi)){ set_status(L"Could not open jogar.bat (it must be in the same folder as CrazyTaxi2.exe).",1); InvalidateRect(g_hw,0,FALSE); return; }
+    if(!CreateProcessW(0,cmd,0,0,FALSE,CREATE_NEW_CONSOLE,0,ex,&si,&pi)){ set_status(L"Could not start the game (launcher\\run.bat is missing).",1); InvalidateRect(g_hw,0,FALSE); return; }
     CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
     g_exit=0; DestroyWindow(g_hw); }
 
