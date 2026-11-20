@@ -402,3 +402,4 @@ Verificado so no harness Linux: layout/cursor das telas, UPSCALE 150%/186%, canv
 - v15zzp (cont. 3): launcher\build.bat sempre espera uma tecla no fim (antes a deteccao de duplo clique usava o 'find' do PATH, que pode ser o GNU find e fazia a janela fechar sozinha) e mostra uma mensagem logo ao iniciar.
 - v15zzp (cont. 4): build.bat acha a raiz do projeto mesmo se estiver na raiz ou em launcher\ e avisa com clareza se faltar VERSION.txt/launcher\assets.
 - v15zzr: removida a exclusao automatica de disc\ (v15zzq): o jogo continua precisando do track03.bin original, e disc\ fica como estava.
+- v15zzs: jogar.bat (usado pelo launcher) atualiza o PATH a partir do registro e procura gcc/clang em pastas comuns (MSYS2, MinGW, LLVM, scoop) quando o launcher aberto pelo Explorer nao enxerga o compilador (PATH antigo).

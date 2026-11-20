@@ -5,6 +5,11 @@ cd /d "%~dp0"
 if not exist run.ps1 cd /d "%~dp0.."
 set "GDI=%~1"
 set "CT2_SKIP_TEST=1"
+rem PATH atualizado do sistema/usuario: um programa aberto pelo Explorer (como o launcher) pode ter um PATH antigo, sem o gcc instalado depois
+set "NEEDP=1"
+where python >nul 2>nul && ( where gcc >nul 2>nul && set "NEEDP=" )
+where python >nul 2>nul && ( where clang >nul 2>nul && set "NEEDP=" )
+if defined NEEDP for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "[Environment]::ExpandEnvironmentVariables([Environment]::GetEnvironmentVariable('Path','Machine')+';'+[Environment]::GetEnvironmentVariable('Path','User'))"`) do set "PATH=%PATH%;%%P"
 rem jogar.bat            -> gera/compila/executa o jogo (usa o disco que o launcher lembrou em launcher.ini)
 rem jogar.bat "pasta"    -> idem, com a pasta do track03.bin indicada
 rem jogar.bat launcher   -> abre o launcher (CrazyTaxi2.exe); se nao existir, gera a versao pronta em dist\ antes
@@ -34,8 +39,10 @@ if defined SKIPCC ( echo [2/3] ct2.exe ja esta atualizado, pulando a compilacao.
 echo [2/3] Compilando ct2.exe...
 set "CC="
 where clang >nul 2>nul && set "CC=clang"
-if not defined CC ( where gcc >nul 2>nul && set "CC=gcc" )
-if not defined CC ( echo Nem clang nem gcc encontrados no PATH. & call :PAUSE & exit /b 1 )
+where gcc >nul 2>nul && if not defined CC set "CC=gcc"
+if not defined CC for %%D in ("C:\msys64\ucrt64\bin" "C:\msys64\mingw64\bin" "C:\msys64\clang64\bin" "C:\mingw64\bin" "C:\mingw32\bin" "C:\MinGW\bin" "C:\Program Files\LLVM\bin" "%USERPROFILE%\scoop\apps\gcc\current\bin" "%USERPROFILE%\scoop\apps\mingw\current\bin" "C:\ProgramData\mingw64\mingw64\bin" "C:\ProgramData\chocolatey\bin") do if not defined CC if exist "%%~D\gcc.exe" ( set "PATH=!PATH!;%%~D" & set "CC=gcc" )
+if not defined CC for %%D in ("C:\Program Files\LLVM\bin") do if not defined CC if exist "%%~D\clang.exe" ( set "PATH=!PATH!;%%~D" & set "CC=clang" )
+if not defined CC ( echo Nem clang nem gcc encontrados ^(nem no PATH nem nas pastas comuns: MSYS2, MinGW, LLVM, scoop^). Instale o MinGW-w64 ou o MSYS2 e reinicie o computador ou o launcher. & call :PAUSE & exit /b 1 )
 powershell -ExecutionPolicy Bypass -File "%CD%\compile.ps1" -CC %CC%
 if errorlevel 1 ( echo A compilacao falhou: copie as mensagens acima e envie. & call :PAUSE & exit /b 1 )
 copy /y VERSION.txt ct2.ver >nul
