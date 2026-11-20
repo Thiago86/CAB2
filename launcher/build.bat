@@ -1,4 +1,5 @@
 @echo off
+echo Crazy Taxi 2 - criando a versao pronta ^(dist^)...
 setlocal
 set "RESULT=0"
 rem Gera a "versao pronta": dist\CrazyTaxi2_<versao>\  com CrazyTaxi2.exe (icone embutido) e so as pastas/arquivos necessarios.
@@ -46,6 +47,6 @@ echo.
 echo Versao pronta criada em %D%\
 echo Abra %D%\CrazyTaxi2.exe  
 :END
-rem se foi aberto com duplo clique, nao fecha a janela antes de voce ler
-echo %cmdcmdline% | find /i "%~nx0" >nul && pause
+rem sempre espera uma tecla (a janela nao fecha antes de voce ler), exceto quando chamado pelo jogar.bat
+if not defined CT2_NOPAUSE pause
 exit /b %RESULT%

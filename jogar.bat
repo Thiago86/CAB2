@@ -59,7 +59,9 @@ if not exist launcher\build.bat ( echo CrazyTaxi2.exe nao encontrado. & call :PA
 set /p VER=<VERSION.txt
 if not exist "dist\CrazyTaxi2_!VER!\CrazyTaxi2.exe" (
   echo Gerando a versao pronta...
+  set "CT2_NOPAUSE=1"
   call launcher\build.bat
+  set "CT2_NOPAUSE="
   if errorlevel 1 ( call :PAUSE & exit /b 1 )
 )
 start "" "%CD%\dist\CrazyTaxi2_!VER!\CrazyTaxi2.exe"
