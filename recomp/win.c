@@ -10,6 +10,7 @@ void menux_filter(unsigned short *pb,unsigned char *rt,unsigned char *lt);
 #define FH 480
 extern int ta_res_i, ta_aspect, ta_disp_gen, ta_fb_w, ta_fb_h; extern const int ta_res_tab[10][2]; void ta_load_settings(void); const char *ta_gpu_name(void); void ta_save_settings(void);
 static HWND hwnd=0; static int quit=0; static uint32_t pix[3840*2160]; static BITMAPINFO bmi; static int inited=0; static int curw=FW, curh=FH; static int d_gen=0, d_mode=0;
+static int win_active(void){ return hwnd&&!IsIconic(hwnd)&&GetForegroundWindow()==hwnd; }   /* v15zzy: minimizado / sem foco = nao le teclado nem controle */
 static void disp_restore(void){ if(d_mode){ ChangeDisplaySettingsA(0,0); d_mode=0; } }
 static void draw(HDC dc,HWND h){
     RECT rc; GetClientRect(h,&rc); if(rc.right<=0||rc.bottom<=0) return;
@@ -64,7 +65,7 @@ void win_request_quit(void){ quit=1; if(hwnd) PostMessageA(hwnd,WM_CLOSE,0,0); }
 int win_pump(void){
     init(); disp_apply(); MSG msg;
     while(PeekMessageA(&msg,0,0,0,PM_REMOVE)){ if(msg.message==WM_QUIT){ quit=1; } TranslateMessage(&msg); DispatchMessageA(&msg); }
-    { extern int ct2_kbd_cap, ct2_pad_cap, ct2_pad_got; extern int ct2_esc; ct2_esc=0; if(GetAsyncKeyState(VK_ESCAPE)&0x8000){ if(ct2_pad_cap) ct2_pad_got=-1; else if(!ct2_kbd_cap) ct2_esc=1; } }   /* v15zzk: ESC nao fecha mais o jogo; vira o Start (menu de pausa) - menux_filter */
+    { extern int ct2_kbd_cap, ct2_pad_cap, ct2_pad_got; extern int ct2_esc; ct2_esc=0; if(win_active()&&(GetAsyncKeyState(VK_ESCAPE)&0x8000)){ if(ct2_pad_cap) ct2_pad_got=-1; else if(!ct2_kbd_cap) ct2_esc=1; } }   /* v15zzk: ESC nao fecha mais o jogo; vira o Start (menu de pausa) - menux_filter */
     return !quit;
 }
 int win_present(const uint32_t *fb){
@@ -103,8 +104,8 @@ static int splash_one(const char*path,int ms){
         if(hwnd){ HDC dc=GetDC(hwnd); RECT rc; GetClientRect(hwnd,&rc); if(rc.right>0&&rc.bottom>0){ int dw=rc.right,dh=rc.bottom,dx=0,dy=0; float ia=4.f/3.f; if(ta_aspect==0) ia=(float)dw/(float)dh;   /* STRETCH: preenche a janela; demais modos: 4:3 centralizado com barras */ if((float)dw/(float)dh>ia){ int nw=(int)(dh*ia+.5f); dx=(dw-nw)/2; dw=nw; } else { int nh=(int)(dw/ia+.5f); dy=(dh-nh)/2; dh=nh; }
                 RECT a={0,0,dx,rc.bottom},b={dx+dw,0,rc.right,rc.bottom},c={0,0,rc.right,dy},d={0,dy+dh,rc.right,rc.bottom}; if(a.right>a.left) FillRect(dc,&a,bg); if(b.right>b.left) FillRect(dc,&b,bg); if(c.bottom>c.top) FillRect(dc,&c,bg); if(d.bottom>d.top) FillRect(dc,&d,bg);
                 SetStretchBltMode(dc,HALFTONE); SetBrushOrgEx(dc,0,0,0); StretchDIBits(dc,dx,dy,dw,dh,0,0,W,H,px,&bi,DIB_RGB_COLORS,SRCCOPY); } ReleaseDC(hwnd,dc); }
-        { int any=0; for(int vk=8;vk<255;vk++){ if(vk==VK_ESCAPE||(vk>=0x10&&vk<=0x12)) continue; if(GetAsyncKeyState(vk)&0x8000) any=1; }
-          if(xget){ for(DWORD idx=0;idx<4;idx++){ XState s; memset(&s,0,sizeof s); if(xget(idx,&s)==0&&(s.btn&0xF0F0)) any=1; } }
+        { int any=0; for(int vk=8;vk<255;vk++){ if(vk==VK_ESCAPE||(vk>=0x10&&vk<=0x12)) continue; if(win_active()&&(GetAsyncKeyState(vk)&0x8000)) any=1; }
+          if(xget&&win_active()){ for(DWORD idx=0;idx<4;idx++){ XState s; memset(&s,0,sizeof s); if(xget(idx,&s)==0&&(s.btn&0xF0F0)) any=1; } }
           if(!any) armed=1; else if(armed) skip=1; }   /* so conta tecla apertada depois de soltar as anteriores */
         Sleep(10); }
     DeleteObject(bg); free(px); return skip;
@@ -118,7 +119,7 @@ static void vib_apply(DWORD idx){
     int v=p?(int)((0.35f+0.65f*(float)p/7.f)*65535.f):0;   /* piso de 35%: forca 1 do jogo seria imperceptivel no motor do XInput */ if(v==vib_last||!xset) return; vib_last=v;
     XVib m; m.l=(WORD)v; m.r=(WORD)(v*3/4); xset(idx,&m);
 }
-static int key(int vk){ SHORT k=GetAsyncKeyState(vk); return (k&0x8000)!=0||(k&1)!=0; }   /* v15s: bit 0 = foi apertada desde a ultima consulta (nao perde toques curtos entre quadros) */
+static int key(int vk){ if(!win_active()) return 0; SHORT k=GetAsyncKeyState(vk); return (k&0x8000)!=0||(k&1)!=0; }   /* v15s: bit 0 = foi apertada desde a ultima consulta (nao perde toques curtos entre quadros) */
 /* controle generico (DirectInput/HID) via winmm, usado quando nao ha controle XInput */
 typedef struct { DWORD dwSize,dwFlags,dwXpos,dwYpos,dwZpos,dwRpos,dwUpos,dwVpos,dwButtons,dwButtonNumber,dwPOV,dwReserved1,dwReserved2; } JoyEx;
 typedef UINT (WINAPI *JoyGetPosEx)(UINT,JoyEx*);
@@ -128,7 +129,7 @@ static void w_title(void){ char t[320]; snprintf(t,sizeof t,"Crazy Taxi 2 (recom
 void win_status(const char*s){ snprintf(w_st,sizeof w_st,"%s",s?s:""); w_title(); }
 double win_now_ms(void){ static LARGE_INTEGER f; LARGE_INTEGER n; if(!f.QuadPart) QueryPerformanceFrequency(&f); QueryPerformanceCounter(&n); return 1000.0*(double)n.QuadPart/(double)f.QuadPart; }
 void win_perf(double fps,double render_ms,double present_ms,int skipped){ snprintf(w_pf,sizeof w_pf,"[%.0f fps | desenho %.1f ms | tela %.1f ms | pulados %d/60]",fps,render_ms,present_ms,skipped); w_title(); }
-int win_hotkeys(void){ static int prev[4]; int r=0; static const int vk[4]={VK_F1,VK_F2,VK_F3,VK_F4}; static const int vk2[4]={'1','2','3','4'}; for(int i=0;i<4;i++){ int d=((GetAsyncKeyState(vk[i])&0x8000)!=0)||((GetAsyncKeyState(vk2[i])&0x8000)!=0); if(d&&!prev[i]) r|=1<<i; prev[i]=d; } return r; }
+int win_hotkeys(void){ static int prev[4]; int r=0; static const int vk[4]={VK_F1,VK_F2,VK_F3,VK_F4}; static const int vk2[4]={'1','2','3','4'}; for(int i=0;i<4;i++){ int d=win_active()&&(((GetAsyncKeyState(vk[i])&0x8000)!=0)||((GetAsyncKeyState(vk2[i])&0x8000)!=0)); if(d&&!prev[i]) r|=1<<i; prev[i]=d; } return r; }
 extern int ta_dump_req; extern int ta_toggle_timer(void); extern const char *ta_toggle_dbg(int);
 void win_pad(uint16_t *buttons,uint8_t *rt,uint8_t *lt,uint8_t *jx,uint8_t *jy){
     uint16_t b=0xFFFF; int x=128,y=128,r=0,l=0;
@@ -145,17 +146,17 @@ void win_pad(uint16_t *buttons,uint8_t *rt,uint8_t *lt,uint8_t *jx,uint8_t *jy){
       #undef KM
       if(any) ct2_kbd_used=300;   /* quem joga no teclado usa o controle moderno (toque duplo em acelerar = turbo dash) */
       { static unsigned char pd[256]; static int kw=0;   /* teclas ja seguradas ao abrir a captura (ex.: a tecla de confirmar) nao contam */
-        if(ct2_kbd_cap){ for(int vk=8;vk<255;vk++){ if(vk>=0x10&&vk<=0x12) continue; int d=(GetAsyncKeyState(vk)&0x8000)!=0; if(kw&&d&&!pd[vk]&&!ct2_kbd_got){ ct2_kbd_got=(vk==VK_ESCAPE)?-1:vk; } pd[vk]=(unsigned char)d; } kw=1; } else kw=0; }
+        if(ct2_kbd_cap){ for(int vk=8;vk<255;vk++){ if(vk>=0x10&&vk<=0x12) continue; int d=win_active()&&(GetAsyncKeyState(vk)&0x8000)!=0; if(kw&&d&&!pd[vk]&&!ct2_kbd_got){ ct2_kbd_got=(vk==VK_ESCAPE)?-1:vk; } pd[vk]=(unsigned char)d; } kw=1; } else kw=0; }
       { /* mouse -> coordenadas 640x480 da area 4:3 dos menus */
         extern float ct2_mouse_x, ct2_mouse_y; extern int ct2_mouse_click, ct2_mouse_moved; static int lb=0; static float ox=-9,oy=-9; POINT pt; RECT rc; ct2_mouse_x=ct2_mouse_y=-1;
         if(hwnd&&GetCursorPos(&pt)&&ScreenToClient(hwnd,&pt)&&GetClientRect(hwnd,&rc)&&rc.right>0&&rc.bottom>0&&GetForegroundWindow()==hwnd){
             float cw=(float)rc.right,ch=(float)rc.bottom,bw=cw,bh=ch,bx=0,by=0; if(ta_aspect!=0){ if(cw/ch>4.f/3.f){ bw=ch*4.f/3.f; bx=(cw-bw)/2.f; } else { bh=cw*3.f/4.f; by=(ch-bh)/2.f; } }
             float u=((float)pt.x-bx)/bw*640.f, v=((float)pt.y-by)/bh*480.f; if(u>=0&&u<640&&v>=0&&v<480){ ct2_mouse_x=u; ct2_mouse_y=v; if(fabsf(u-ox)+fabsf(v-oy)>1.5f) ct2_mouse_moved=1; ox=u; oy=v; } }
-        int d=(GetAsyncKeyState(VK_LBUTTON)&0x8000)!=0; if(d&&!lb) ct2_mouse_click=1; lb=d; }
+        int d=win_active()&&(GetAsyncKeyState(VK_LBUTTON)&0x8000)!=0; if(d&&!lb) ct2_mouse_click=1; lb=d; }
     }
     if(!xtried){ xtried=1; HMODULE m=LoadLibraryA("xinput1_4.dll"); if(!m) m=LoadLibraryA("xinput9_1_0.dll"); if(!m) m=LoadLibraryA("xinput1_3.dll"); if(m){ xget=(XGetState)GetProcAddress(m,"XInputGetState"); xset=(XSetState)GetProcAddress(m,"XInputSetState"); } }
     int got=0;
-    if(xget){ for(DWORD idx=0;idx<4&&!got;idx++){ XState s; memset(&s,0,sizeof s); if(xget(idx,&s)!=0) continue; got=1; vib_apply(idx);
+    if(xget&&win_active()){ for(DWORD idx=0;idx<4&&!got;idx++){ XState s; memset(&s,0,sizeof s); if(xget(idx,&s)!=0) continue; got=1; vib_apply(idx);
         { /* v15zz: botoes do controle configuraveis (Controller Setting > painel); padrao identico ao anterior */
           extern int ct2_pmap[11], ct2_pmap_custom, ct2_pad_cap, ct2_pad_got; int cu=ct2_pmap_custom;
           #define PD(idx) ((idx)<16?(((s.btn>>(idx))&1)!=0):((idx)==16?(s.lt>100):(s.rt>100)))
@@ -171,7 +172,7 @@ void win_pad(uint16_t *buttons,uint8_t *rt,uint8_t *lt,uint8_t *jx,uint8_t *jy){
         if(s.lx>8000||s.lx<-8000) x=(s.lx+32768)>>8;
         if(s.ly>8000||s.ly<-8000) y=255-((s.ly+32768)>>8);
     } }
-    if(!got){
+    if(!got&&win_active()){
         if(!jtried){ jtried=1; HMODULE m=LoadLibraryA("winmm.dll"); if(m) jget=(JoyGetPosEx)GetProcAddress(m,"joyGetPosEx"); }
         if(jget){ for(UINT id=0;id<4;id++){ JoyEx j; memset(&j,0,sizeof j); j.dwSize=sizeof j; j.dwFlags=0xFF; if(jget(id,&j)!=0) continue;
             if(j.dwButtons&1) b&=~(1u<<2); if(j.dwButtons&2) b&=~(1u<<1); if(j.dwButtons&4) b&=~(1u<<10); if(j.dwButtons&8) b&=~(1u<<9);
