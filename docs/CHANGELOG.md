@@ -401,3 +401,4 @@ Verificado so no harness Linux: layout/cursor das telas, UPSCALE 150%/186%, canv
 - v15zzp (cont. 2): launcher\build.bat copia os arquivos para dist ANTES de compilar o launcher (a pasta nunca fica vazia se a compilacao falhar); launcher.c define _WIN32_WINNT 0x0601 (GetProcessId em MinGW antigo).
 - v15zzp (cont. 3): launcher\build.bat sempre espera uma tecla no fim (antes a deteccao de duplo clique usava o 'find' do PATH, que pode ser o GNU find e fazia a janela fechar sozinha) e mostra uma mensagem logo ao iniciar.
 - v15zzp (cont. 4): build.bat acha a raiz do projeto mesmo se estiver na raiz ou em launcher\ e avisa com clareza se faltar VERSION.txt/launcher\assets.
+- v15zzq: jogar.bat (e o launcher\run.bat da versao pronta) apaga automaticamente as copias extraidas em disc\ depois do build, mantendo so 1ST_READ.BIN e IP.BIN; o track03.bin original nao e tocado (o jogo le dele durante a partida). Para manter tudo: set CT2_KEEP_DISC=1.

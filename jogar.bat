@@ -41,6 +41,13 @@ if errorlevel 1 ( echo A compilacao falhou: copie as mensagens acima e envie. & 
 copy /y VERSION.txt ct2.ver >nul
 
 :RUN
+rem Depois que o jogo esta gerado e compilado, apaga as copias extraidas do disco (disc\), exceto 1ST_READ.BIN e IP.BIN.
+rem O jogo le os dados direto do track03.bin original (que NAO e tocado). Para manter tudo: set CT2_KEEP_DISC=1
+if exist disc\1ST_READ.BIN if exist disc\IP.BIN if not "%CT2_KEEP_DISC%"=="1" (
+  for /f "delims=" %%F in ('dir /b /a disc 2^>nul') do if /i not "%%F"=="1ST_READ.BIN" if /i not "%%F"=="IP.BIN" (
+    if exist "disc\%%F\" ( rd /s /q "disc\%%F" ) else ( del /f /q "disc\%%F" )
+  )
+)
 if "%CT2_BUILD_ONLY%"=="1" exit /b 0
 echo [3/3] Executando ^(Esc fecha a janela^)...
 if not exist disc\1ST_READ.BIN ( echo disc\1ST_READ.BIN nao existe. & call :PAUSE & exit /b 1 )

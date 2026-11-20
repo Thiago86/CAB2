@@ -35,6 +35,8 @@ code addresses are specific to this build.
    log in `build.log`). Only then is **PLAY** unlocked.
 4. **PLAY** starts the game.
 
+After the build, the extracted copies in `disc\` are deleted automatically (only `1ST_READ.BIN` and `IP.BIN` are kept). Your original `track03.bin` is never touched — the game reads from it while running, so keep it where it is. Set `CT2_KEEP_DISC=1` to keep everything.
+
 ## Developer mode
 `jogar.bat "C:\path\to\dump"` — extracts, analyzes, generates C, compiles and runs directly.
 When updating to a new version, delete `recomp\obj` and `ct2.exe` (`jogar.bat` only rebuilds when `VERSION.txt` changes).
