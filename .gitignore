@@ -1,0 +1,26 @@
+# Gerado a partir do SEU disco - derivado do jogo da Sega: nunca versionar
+disc/
+out/
+recomp/ct2_funcs_*.c
+recomp/ct2_funcs.h
+recomp/ct2_dispatch.c
+recomp/scan_list.txt
+recomp/obj/
+# Compilados / versao pronta
+dist/
+*.o
+*.exe
+ct2.ver
+launcher/build.ver
+# Dados do usuario e logs
+launcher.ini
+opcoes.ini
+vmu_a1.bin
+*.log
+saida.txt
+perf.txt
+frames/
+tex0/
+tex1/
+intro_*.ppm
+__pycache__/

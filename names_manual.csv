@@ -1,0 +1,36 @@
+address,name,confidence,evidence
+0x0c01aa64,game_load_common_files,observado,referencia sprST.BIN AICADRV.BIN sndDC*.bin
+0x0c01b214,game_main,inferido,primeira funcao do jogo chamada por crt_start
+0x0c06f090,set_global_0c2bdb44(r4),observado,grava r4 em 0x0c2bdb44
+0x0c0709d0,int_sub(r4;r5)->r0,verificado,teste: r4-r5; uma unica chamada
+0x0c071340,rsqrt_float(fr4)->fr0,verificado,teste: 1/sqrt(x) em 120 valores
+0x0c072840,sincos_angle16(r4)->fr0=sin;fr1=cos,verificado,"teste: 0x4000->(1,0); 0x2000->(0.7071,0.7071); 65536=volta"
+0x0c072930,xmtrx_transform_point(src=r4;dst=r5),verificado,teste: aplica translacao
+0x0c072990,xmtrx_transform_dir(src=r4;dst=r5),verificado,teste: ignora translacao
+0x0c072d00,xmtrx_get_translation(dst=r4),observado,frchg e gravacao de fr12-fr14
+0x0c073980,xmtrx_stack_push(count=r4),inferido,ponteiro de pilha global em 0x0c2bdba0 com checagem de limite
+0x0c0739d0,xmtrx_stack_op_0c0739d0,inferido,mesma pilha; usa pref; operacao exata nao determinada
+0x0c073a60,xmtrx_push_and_identity,inferido,chama 0x0c0739d0(0) e xmtrx_load_identity
+0x0c073ba0,xmtrx_rotate_x(angle16=r4),verificado,"teste: 0x4000 deixa X fixo; Y->Z, Z->-Y; base ortonormal det=+1"
+0x0c073d50,xmtrx_rotate_y(angle16=r4),verificado,"teste: 0x4000 deixa Y fixo; Z->X, X->-Z; base ortonormal det=+1"
+0x0c073e10,xmtrx_rotate_z(angle16=r4),verificado,"teste: 0x4000 deixa Z fixo; X->Y, Y->-X; base ortonormal det=+1"
+0x0c0740a0,xmtrx_set_translation(v=r4),observado,frchg e carga direta em fr12-fr14
+0x0c074130,xmtrx_translate(fr4;fr5;fr6),verificado,teste: acumula translacoes
+0x0c074160,xmtrx_translate_vec(v=r4),observado,carrega xyz do ponteiro e salta para 0x0c074130
+0x0c074180,xmtrx_load_identity,verificado,teste: transform_point devolve o proprio ponto
+0x0c0741d0,vec3_add_inplace(a=r4;b=r5),verificado,"teste: (1,2,3)+(10,20,30)=(11,22,33)"
+0x0c074240,vec3_dot(a=r4;b=r5)->fr0,verificado,"teste: (1,2,3).(4,-5,6)=12"
+0x0c074260,vec3_distance(a=r4;b=r5)->fr0,verificado,"teste: distancia (3,4,0)-(0,0,12)=13"
+0x0c074340,vec3_scale(dst=r4;src=r5;s=fr4),verificado,"teste: (1,-2,3)*2.5"
+0x0c074360,vec3_length(a=r4)->fr0,verificado,"teste: |(2,3,6)|=7"
+0x0c074390,vec3_sub_inplace(a=r4;b=r5),verificado,"teste: (1,2,3)-(10,20,30)=(-9,-18,-27)"
+0x0c0743b0,vec3_sub(dst=r4;a=r5;b=r6),verificado,teste: dst=a-b
+0x0c074510,vec3_normalize(v=r4),verificado,"teste: (0,3,4)->(0,0.6,0.8)"
+0x0c075620,set_float_global_0c2c3028(fr4),observado,grava fr4 em 0x0c2c3028
+0x0c0801ec,rt_sdiv_r1_by_r0 (r1=r1/r0 com sinal),verificado,teste: 120 pares aleatorios iguais ao C; sequencia de div1
+0x0c0802a0,rt_udiv_r1_by_r0 (r1=r1/r0 sem sinal),verificado,teste: 120 pares aleatorios iguais ao C
+0x0c080348,rt_smod_r1_by_r0 (r0=r1%r0 com sinal),verificado,teste: 120 pares aleatorios iguais ao C
+0x0c080410,rt_umod_r1_by_r0 (r0=r1%r0 sem sinal),verificado,teste: 120 pares aleatorios iguais ao C
+0x0c080600,compiler_runtime_jump_table_helper,inferido,despacho por tabela (mova + braf) sem prologo de funcao C
+0x0c0806ac,abs_int(r4)->r0,verificado,teste: |x|
+0x0c145ae0,crt_start,observado,alvo do stub de entrada; chama 0x0c01b214 e rotinas de init
