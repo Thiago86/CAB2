@@ -237,7 +237,7 @@ static void menux_frame(void){
         int vsel=mx_vact;
         if(vsel){ for(int i=0;i<nr;i++) if(MR[i].sel){ mx_barstyle(MR[i].first,MR[i].last,0); } }
         float cx=(MR[vib].x0+MR[vib].x1)/2.f, dxb=MR[vib].x0-33.f; if(fabsf(dxb)<3.f) dxb=0.f; float xv=478.f+dxb;
-        static const char*lbl[4]={"RES  (A: MODE)","ASPECT","UPSCALE","ANTIALIASING"}; static const char*asp[3]={"STRETCH","SIDE BARS","WIDESCREEN EXP"};
+        static const char*lbl[4]={"RESOLUTION","ASPECT","UPSCALE","ANTIALIASING"}; static const char*asp[3]={"STRETCH","SIDE BARS","WIDESCREEN EXP"};
         for(int row=0;row<4;row++){   /* linhas novas no alto: y virtual -40, -4, 32, 68 */
             float y0=104.f-36.f*(4-row); int vid=V_RES+row;
             size_t n0=ntri; for(int i=MR[vib].first;i<=MR[vib].last;i++) mx_new(&tris[i]);
@@ -423,7 +423,7 @@ void menux_filter(uint16_t *pb,uint8_t *rt,uint8_t *lt){
             else if(pr&K_DN){ if(mx_vact<V_FPS){ mx_vact++; hold|=K_DN; } else { mx_vact=0; hold|=K_DN; } }
             else if((pr&K_A)&&mx_vact==V_RES){ ta_res_i=((ta_res_i/10+1)%3)*10+ta_res_i%10; ta_disp_gen++; mx_save(); }   /* v15zzz: A troca WINDOW -> FULLSCREEN -> BORDERLESS */
             else if(pr&K_LR){ int d=(pr&K_RT)?1:-1; int ch=0;
-                if(mx_vact==V_RES){ ta_res_i=(ta_res_i/10)*10+((ta_res_i%10)+d+10)%10; ch=1; }   /* esquerda/direita = resolucao; A = modo (janela / tela cheia / borderless) */
+                if(mx_vact==V_RES){ ta_res_i=(ta_res_i+d+30)%30; ch=1; }   /* esquerda/direita percorre as 10 resolucoes em JANELA, depois em TELA CHEIA, depois em BORDERLESS (como antes, +10); A pula direto para o proximo modo */
                 else if(mx_vact==V_ASP){ ta_aspect=(ta_aspect+d+3)%3; ch=1; }
                 else if(mx_vact==V_UPS){ int lv=mx_up_level()+d; if(lv<0) lv=0; if(lv>7) lv=7; ta_upscale=mx_up_pct[lv]; ch=1; }
                 else if(mx_vact==V_FPS){ ta_aa_mode=(ta_aa_mode+d+5)%5; ch=1; }
