@@ -35,15 +35,17 @@ function Get-File($url, $out) {
 try {
   if (($Only -eq "all" -or $Only -eq "python") -and -not (Have-Python)) {
     Write-Host "[toolchain] Baixando o Python portatil ($PyVer, ~11 MB)..."
-    $z = Join-Path $env:TEMP "ct2_python.zip"; Get-File $PyUrl $z
+    $z = Join-Path $env:TEMP "ct2_python.zip"; $cz = Join-Path $Dest "cache\python-$PyVer-embeddable-amd64.zip"
+    if (Test-Path $cz) { Copy-Item $cz $z -Force } else { Get-File $PyUrl $z }
     $pd = Join-Path $Dest "python"; if (Test-Path $pd) { Remove-Item $pd -Recurse -Force }
     Expand-Archive -Path $z -DestinationPath $pd -Force; Remove-Item $z -Force
     if (-not (Test-Path (Join-Path $pd "python.exe"))) { throw "python.exe nao apareceu apos extrair" }
     Write-Host "[toolchain] Python pronto em $pd"
   }
   if (($Only -eq "all" -or $Only -eq "compiler") -and -not (Have-Compiler)) {
-    Write-Host "[toolchain] Baixando o compilador portatil (w64devkit $GccVer, ~80 MB; so na primeira vez)..."
-    $x = Join-Path $env:TEMP "ct2_w64devkit.exe"; Get-File $GccUrl $x
+    Write-Host "[toolchain] Baixando o compilador portatil (w64devkit $GccVer, ~40 MB; so na primeira vez)..."
+    $x = Join-Path $env:TEMP "ct2_w64devkit.exe"; $cx = Join-Path $Dest "cache\w64devkit-x64-$GccVer.7z.exe"
+    if (Test-Path $cx) { Write-Host "[toolchain] Usando o compilador que ja veio junto (sem baixar)..."; Copy-Item $cx $x -Force } else { Get-File $GccUrl $x }
     $gd = Join-Path $Dest "w64devkit"; if (Test-Path $gd) { Remove-Item $gd -Recurse -Force }
     Write-Host "[toolchain] Extraindo o compilador..."
     $p = Start-Process -FilePath $x -ArgumentList @("-y", "-o`"$Dest`"") -Wait -PassThru -WindowStyle Hidden

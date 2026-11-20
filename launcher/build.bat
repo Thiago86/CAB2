@@ -47,7 +47,7 @@ if defined BUNDLE (
   echo Incluindo o Python e o compilador portateis na versao pronta ^(o PC de quem for jogar nao precisara baixar nem instalar nada; baixa so agora, 1 vez, se ainda nao estiverem na pasta toolchain^)...
   call :GETCC
   powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain" -Only all
-  if exist toolchain robocopy toolchain "%D%\toolchain" /E /NFL /NDL /NJH /NJS >nul
+  if exist toolchain robocopy toolchain "%D%\toolchain" /E /XD cache /NFL /NDL /NJH /NJS >nul
 )
 echo Arquivos copiados. Compilando o launcher...
 set "RCO="
