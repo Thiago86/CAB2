@@ -5,7 +5,11 @@ set "RESULT=0"
 rem Gera a "versao pronta": dist\CrazyTaxi2_<versao>\  com CrazyTaxi2.exe (icone embutido) e so as pastas/arquivos necessarios.
 rem Uso: launcher\build.bat          (sem o C gerado do disco - e o que se distribui; ele e gerado no 1o PLAY)
 rem      launcher\build.bat withc    (inclui recomp\ct2_funcs_*.c - so para uso proprio, nao redistribuir)
-cd /d "%~dp0.."
+cd /d "%~dp0"
+if not exist VERSION.txt cd /d "%~dp0.."
+if not exist VERSION.txt ( echo ERRO: nao achei VERSION.txt. Este build.bat precisa ficar na pasta "launcher" do projeto ^(ou na raiz dele^), junto de recomp, tools e launcher\assets. & set "RESULT=1" & goto END )
+if not exist launcher\assets\bg.raw ( echo ERRO: nao achei launcher\assets. Extraia o zip inteiro e rode o build.bat que esta dentro da pasta launcher. & set "RESULT=1" & goto END )
+echo Pasta do projeto: %CD%
 set /p VER=<VERSION.txt
 set "D=dist\CrazyTaxi2_%VER%"
 set "LCC="
