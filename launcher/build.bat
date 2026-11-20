@@ -5,11 +5,12 @@ set "RESULT=0"
 set "BUNDLE=1"
 set "WITHC="
 for %%A in (%*) do if /i "%%A"=="nobundle" set "BUNDLE="
-for %%A in (%*) do if /i "%%A"=="withc" set "WITHC=1"
+if exist recomp\ct2_funcs_00.c set "WITHC=1"
+for %%A in (%*) do if /i "%%A"=="public" set "WITHC="
 rem Gera a "versao pronta": dist\CrazyTaxi2_<versao>\  com CrazyTaxi2.exe (icone embutido) e so as pastas/arquivos necessarios.
 rem Uso: launcher\build.bat          (sem o C gerado do disco - e o que se distribui; ele e gerado no 1o PLAY)
 rem      launcher\build.bat nobundle (sem o Python/compilador portateis dentro: o jogo os baixa na 1a vez)
-rem      launcher\build.bat withc    (inclui recomp\ct2_funcs_*.c - so para uso proprio, nao redistribuir)
+rem      (padrao) inclui o C gerado do disco se existir em recomp\ - so para uso proprio, nao redistribuir; "public" = sem ele
 cd /d "%~dp0"
 if not exist VERSION.txt cd /d "%~dp0.."
 if not exist VERSION.txt ( echo ERRO: nao achei VERSION.txt. Este build.bat precisa ficar na pasta "launcher" do projeto ^(ou na raiz dele^), junto de recomp, tools e launcher\assets. & set "RESULT=1" & goto END )
@@ -44,10 +45,20 @@ if defined WITHC (
 )
 if errorlevel 8 ( echo Falha ao copiar recomp & set "RESULT=1" & goto END )
 if defined BUNDLE (
-  echo Incluindo o Python e o compilador portateis na versao pronta ^(o PC de quem for jogar nao precisara baixar nem instalar nada; baixa so agora, 1 vez, se ainda nao estiverem na pasta toolchain^)...
+  echo Incluindo o compilador portatil na versao pronta ^(sem baixar nada no PC de quem for jogar^)...
   call :GETCC
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain" -Only all
+  if defined WITHC (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain" -Only compiler
+  ) else (
+    echo Sem o C gerado: incluindo tambem o Python portatil ^(baixa 1 vez se ainda nao estiver em toolchain^)...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain" -Only all
+  )
   if exist toolchain robocopy toolchain "%D%\toolchain" /E /XD cache /NFL /NDL /NJH /NJS >nul
+)
+if defined WITHC (
+  echo Incluindo o C gerado do disco ^(uso pessoal: NAO distribua esta pasta; use "build.bat public" para uma versao distribuivel^).
+  if not exist "%D%\out" mkdir "%D%\out"
+  if exist out\extra_usado.txt copy /y out\extra_usado.txt "%D%\out\" >nul
 )
 echo Arquivos copiados. Compilando o launcher...
 set "RCO="
