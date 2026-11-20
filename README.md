@@ -22,13 +22,14 @@ code addresses are specific to this build.
 
 ## Requirements
 1. Windows 10/11, 64-bit.
-2. **Python 3** in `PATH`.
-3. **gcc (MinGW-w64)** or **clang** in `PATH`.
-4. A dump of your own **US** disc: a folder with the `.gdi` and `track03.bin` (the data-track file must be named
+2. Internet access on the first run only: if Python 3 or a C compiler (gcc/clang) is not found, the build downloads a portable
+   Python (python.org embeddable) and a portable compiler (w64devkit) into `toolchain\` — nothing is installed on your system.
+   (If you already have them in `PATH`, they are used instead.)
+3. A dump of your own **US** disc: a folder with the `.gdi` and `track03.bin` (the data-track file must be named
    `track03.bin`).
 
 ## How to play (ready-made build with launcher)
-1. Run `launcher\build.bat` — it creates `dist\CrazyTaxi2_<version>\` (the "ready version").
+1. Run `launcher\build.bat` — it creates `dist\CrazyTaxi2_<version>\` (the "ready version"). Use `launcher\build.bat bundle` to also include the portable Python/compiler (works offline, ~400 MB).
 2. Open `dist\CrazyTaxi2_<version>\CrazyTaxi2.exe`.
 3. Click **SELECT FILES** and pick the `.gdi` / `track03.bin`. The launcher validates the disc and extracts the files
    (progress bar), then generates the C code from your disc and compiles the game (second progress bar, a few minutes,

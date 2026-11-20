@@ -103,8 +103,9 @@ static int load_ini(void){
 static int read_small(const char *rel,char *out,size_t n){ char p[1200]; snprintf(p,sizeof p,"%s%s",g_exedir,rel); FILE *f=lc_fopen(p,"rb"); if(!f) return 0; size_t r=fread(out,1,n-1,f); fclose(f); out[r]=0; while(r&&(out[r-1]=='\r'||out[r-1]=='\n'||out[r-1]==' ')) out[--r]=0; return 1; }
 static int needs_build(void){ char a[200],b[200]; if(!read_small("ct2.exe",a,2)) return 1; if(!read_small("ct2.ver",a,sizeof a)||!read_small("VERSION.txt",b,sizeof b)) return 1; return strcmp(a,b)!=0; }
 static void kill_build(void){ if(!g_bp) return; DWORD pid=GetProcessId(g_bp); wchar_t c[100]; wsprintfW(c,L"taskkill /PID %lu /T /F",pid); STARTUPINFOW si; PROCESS_INFORMATION pi; memset(&si,0,sizeof si); si.cb=sizeof si; memset(&pi,0,sizeof pi); if(CreateProcessW(0,c,0,0,FALSE,CREATE_NO_WINDOW,0,0,&si,&pi)){ WaitForSingleObject(pi.hProcess,5000); CloseHandle(pi.hThread); CloseHandle(pi.hProcess); } }
+static int log_has(const char *needle){ static char b[1<<17]; char p[1200]; snprintf(p,sizeof p,"%sbuild.log",g_exedir); FILE *f=lc_fopen(p,"rb"); size_t r=0; if(f){ r=fread(b,1,sizeof b-1,f); fclose(f); } b[r]=0; return strstr(b,needle)!=0; }
 static void build_done(int ok){ if(g_bp){ CloseHandle(g_bp); g_bp=0; } g_busy=0; g_phase=0; KillTimer(g_hw,1);
-    if(ok){ g_ready=1; set_status(L"Game ready! Click PLAY.",0); } else { g_ready=0; set_status(L"The build failed. Open build.log (in the game folder) to see why, then try SELECT FILES again.",1); } }
+    if(ok){ g_ready=1; set_status(L"Game ready! Click PLAY.",0); } else { g_ready=0; if(log_has("[toolchain] ERRO")) set_status(L"Could not download the compiler/Python. Check your internet connection and try SELECT FILES again (details in build.log).",1); else set_status(L"The build failed. Open build.log (in the game folder) to see why, then try SELECT FILES again.",1); } }
 static const wchar_t *bat_rel(void){ char p[1200]; snprintf(p,sizeof p,"%slauncher/run.bat",g_exedir); FILE *f=lc_fopen(p,"rb"); if(f){ fclose(f); return L"launcher\\run.bat"; } return L"jogar.bat"; }
 static void start_build(void){
     char d[1200]; lc_dirname(g_track,d,sizeof d); size_t n=strlen(d); while(n>3&&(d[n-1]=='/'||d[n-1]=='\\')) d[--n]=0;
@@ -125,13 +126,21 @@ static void start_build(void){
     CloseHandle(pi.hThread); g_bp=pi.hProcess; g_phase=2; g_busy=1; g_bpct=0; g_bbase=-1; g_bt1=GetTickCount(); lstrcpyW(g_bmsg,L"STARTING..."); set_status(L"",0); SetTimer(g_hw,1,500,0); }
 static void build_poll(void){
     static char buf[1<<17]; char p[1200]; snprintf(p,sizeof p,"%sbuild.log",g_exedir); FILE *f=lc_fopen(p,"rb"); size_t r=0; if(f){ r=fread(buf,1,sizeof buf-1,f); fclose(f); } buf[r]=0;
-    int base=2; const wchar_t *m=L"STARTING...";
-    if(strstr(buf,"[1/3] Gerando")){ base=5; m=L"ANALYZING GAME CODE..."; }
-    if(strstr(buf,"[2/5]")){ base=8; m=L"MAPPING FUNCTIONS..."; }
-    if(strstr(buf,"[3/5]")){ base=18; m=L"TRANSLATING CODE..."; }
-    if(strstr(buf,"[4/5]")){ base=28; m=L"PREPARING TO COMPILE..."; }
-    if(strstr(buf,"[2/3] Compilando")){ int c=0; for(const char *q=buf;(q=strstr(q,"\ncompilando "));q++) c++; base=30+c*65/14; if(base>95) base=95; m=L"COMPILING GAME..."; }
-    if(strstr(buf,"ligando ct2.exe")){ base=96; m=L"LINKING..."; }
+    int base=2; const wchar_t *m=L"STARTING..."; const char *best=0;
+    struct { const char *k; int b; const wchar_t *m; } mk[]={
+        {"[1/3] Gerando",3,L"ANALYZING GAME CODE..."},
+        {"[toolchain] Baixando o Python",4,L"DOWNLOADING PYTHON (first time only)..."},
+        {"[toolchain] Python pronto",8,L"PREPARING TOOLS..."},
+        {"[toolchain] Baixando o compilador",9,L"DOWNLOADING COMPILER (first time only)..."},
+        {"[toolchain] Extraindo",14,L"UNPACKING COMPILER..."},
+        {"[toolchain] Compilador pronto",16,L"PREPARING TOOLS..."},
+        {"[2/5]",18,L"MAPPING FUNCTIONS..."},
+        {"[3/5]",22,L"TRANSLATING CODE..."},
+        {"[4/5]",28,L"PREPARING TO COMPILE..."},
+        {"[2/3] Compilando",30,L"COMPILING GAME..."},
+        {"ligando ct2.exe",96,L"LINKING..."} };
+    for(int q=0;q<(int)(sizeof mk/sizeof mk[0]);q++){ const char *pp=strstr(buf,mk[q].k); if(pp&&(!best||pp>best)){ best=pp; base=mk[q].b; m=mk[q].m; } }
+    if(base<96){ int c=0; const char *lastc=0; for(const char *q=buf;(q=strstr(q,"\ncompilando "));q++){ c++; lastc=q; } if(c&&(!best||lastc>best||base==30)){ base=30+c*65/14; if(base>95) base=95; m=L"COMPILING GAME..."; } }
     lstrcpyW(g_bmsg,m);
     DWORD now=GetTickCount(); if(base!=g_bbase){ g_bbase=base; g_bt1=now; }
     int creep=(int)((now-g_bt1)/5000); if(creep>7) creep=7; if(base>=96) creep=0; int pct=base+creep; if(pct>g_bpct) g_bpct=pct; if(g_bpct>99) g_bpct=99;

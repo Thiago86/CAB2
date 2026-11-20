@@ -6,6 +6,7 @@ if not exist run.ps1 cd /d "%~dp0.."
 set "GDI=%~1"
 set "CT2_SKIP_TEST=1"
 rem PATH atualizado do sistema/usuario: um programa aberto pelo Explorer (como o launcher) pode ter um PATH antigo, sem o gcc instalado depois
+call :TOOLPATH
 set "NEEDP=1"
 where python >nul 2>nul && ( where gcc >nul 2>nul && set "NEEDP=" )
 where python >nul 2>nul && ( where clang >nul 2>nul && set "NEEDP=" )
@@ -27,6 +28,8 @@ if not exist "out\extra_usado.txt" set "REGEN=1"
 if exist "out\extra_usado.txt" ( fc /b extra_entries.txt out\extra_usado.txt >nul 2>nul || set "REGEN=1" )
 if defined REGEN (
   echo [1/3] Gerando o C a partir do disco ^(demora alguns minutos^)...
+  call :GETTOOLS
+  if errorlevel 1 ( echo Nao consegui obter o Python/compilador. Veja a mensagem acima. & call :PAUSE & exit /b 1 )
   powershell -ExecutionPolicy Bypass -File "%CD%\run.ps1" -Gdi "%GDI%"
   if errorlevel 1 ( echo run.ps1 falhou. & call :PAUSE & exit /b 1 )
   copy /y extra_entries.txt out\extra_usado.txt >nul
@@ -37,6 +40,8 @@ if exist ct2.exe powershell -NoProfile -Command "$e=(Get-Item ct2.exe).LastWrite
 if defined SKIPCC ( fc /b VERSION.txt ct2.ver >nul 2>nul || set "SKIPCC=" )
 if defined SKIPCC ( echo [2/3] ct2.exe ja esta atualizado, pulando a compilacao. & goto RUN )
 echo [2/3] Compilando ct2.exe...
+call :GETTOOLS
+if errorlevel 1 ( echo Nao consegui obter o compilador. Veja a mensagem acima. & call :PAUSE & exit /b 1 )
 set "CC="
 where clang >nul 2>nul && set "CC=clang"
 where gcc >nul 2>nul && if not defined CC set "CC=gcc"
@@ -76,4 +81,16 @@ exit /b 0
 
 :PAUSE
 if not "%CT2_BUILD_ONLY%"=="1" pause
+exit /b 0
+
+:TOOLPATH
+if exist "%CD%\toolchain\python\python.exe" set "PATH=%CD%\toolchain\python;%PATH%"
+if exist "%CD%\toolchain\w64devkit\bin\gcc.exe" set "PATH=%CD%\toolchain\w64devkit\bin;%PATH%"
+exit /b 0
+
+:GETTOOLS
+call :TOOLPATH
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\tools\get_toolchain.ps1" -Dest "%CD%\toolchain"
+if errorlevel 1 exit /b 1
+call :TOOLPATH
 exit /b 0
