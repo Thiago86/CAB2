@@ -29,7 +29,7 @@ code addresses are specific to this build.
    `track03.bin`).
 
 ## How to play (ready-made build with launcher)
-1. Run `launcher\build.bat` — it creates `dist\CrazyTaxi2_<version>\` (the "ready version"). Use `launcher\build.bat bundle` to also include the portable Python/compiler (works offline, ~400 MB).
+1. Run `launcher\build.bat` — it creates `dist\CrazyTaxi2_<version>\` (the "ready version"). By default it bundles a portable Python and compiler (`toolchain\`, downloaded once on the machine that runs the build), so the machine that plays needs nothing installed and no downloads. Use `launcher\build.bat nobundle` for a small build that downloads them on first run instead.
 2. Open `dist\CrazyTaxi2_<version>\CrazyTaxi2.exe`.
 3. Click **SELECT FILES** and pick the `.gdi` / `track03.bin`. The launcher validates the disc and extracts the files
    (progress bar), then generates the C code from your disc and compiles the game (second progress bar, a few minutes,
