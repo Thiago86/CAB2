@@ -1,39 +1,50 @@
-# Crazy Taxi 2 — port nativo para Windows (recompilação estática)
+# Crazy Taxi 2 — native Windows port (static recompilation)
 
-Port de **Crazy Taxi 2 (Dreamcast)** para Windows por **recompilação estática**: o código SH-4 do `1ST_READ.BIN`
-do SEU disco é traduzido para C (`tools/sh4c.py`) e compilado junto com um runtime próprio (`recomp/`: CPU/memória,
-PowerVR TA → Direct3D 11, AICA → áudio, controles, VMU, menu de opções, widescreen etc.).
+A native Windows port of **Crazy Taxi 2 (Dreamcast)** built by **static recompilation**: the SH-4 code in the
+`1ST_READ.BIN` of YOUR disc is translated to C (`tools/sh4c.py`) and compiled together with a custom runtime
+(`recomp/`: CPU/memory, PowerVR TA → Direct3D 11, AICA → audio, input, VMU, options menu, widescreen, etc.).
 
-> **Este repositório NÃO contém nenhum dado do jogo.** Nada de disco, texturas, código gerado ou binários.
-> Você precisa do seu próprio disco (dump GDI com `track03.bin`). Tudo o que deriva do jogo é gerado
-> localmente na sua máquina e está no `.gitignore`.
+> **This repository contains no game data whatsoever.** No disc files, textures, generated code or binaries.
+> You need your own disc dump. Everything derived from the game is generated locally on your machine and is
+> listed in `.gitignore`.
 
-## Aviso importante
-- Projeto de preservação/estudo. Crazy Taxi 2 © SEGA. Sem licença de uso definida (todos os direitos reservados ao autor do código); os assets do launcher são arte do autor baseada em material da Sega.
-- **Status:** a lógica foi desenvolvida/testada em Linux. **Tudo que é Windows (D3D11, `win.c`, launcher GUI, `build.bat`, ícone/windres) ainda é pouco testado** — pode haver falhas.
+## ⚠️ Required game version
+**Only the American (NTSC-U / USA) release of Crazy Taxi 2 is supported** — `1ST_READ.BIN` version v1.004,
+SHA-1 `bcff06e9defcd454d99ada84b9d26757e8ab4221`. The launcher checks the disc volume name (`CRAZY_TAXI_2`) and this
+hash; dumps of other regions/versions (PAL, Japanese, etc.) are rejected and will not work, because the translated
+code addresses are specific to this build.
 
-## O que você precisa
-1. Windows 10/11 64 bits.
-2. **Python 3** no PATH.
-3. **gcc (MinGW-w64)** ou **clang** no PATH.
-4. Dump do seu disco original: pasta com o `.gdi` e o `track03.bin` (o arquivo da trilha de dados precisa se chamar `track03.bin`).
+## Disclaimer
+- Preservation / study project. Crazy Taxi 2 © SEGA. No license is granted for the code (all rights reserved by the
+  author); the launcher artwork is the author's own composition based on Sega material.
+- **Status:** the logic was developed and tested on Linux. **Everything Windows-specific (D3D11, `win.c`, the launcher
+  GUI, `build.bat`, icon/windres) is only lightly tested** — expect rough edges.
 
-## Como jogar (versão pronta com launcher)
-1. Rode `launcher\build.bat` — cria `dist\CrazyTaxi2_<versão>\` (a "versão pronta").
-2. Abra `dist\CrazyTaxi2_<versão>\CrazyTaxi2.exe`.
-3. **SELECT FILES** → escolha o `.gdi` / `track03.bin`. O launcher valida o disco, extrai os arquivos (barra de progresso) e libera o **PLAY**.
-4. **PLAY** gera o código C do seu disco, compila (primeira vez demora) e abre o jogo.
+## Requirements
+1. Windows 10/11, 64-bit.
+2. **Python 3** in `PATH`.
+3. **gcc (MinGW-w64)** or **clang** in `PATH`.
+4. A dump of your own **US** disc: a folder with the `.gdi` and `track03.bin` (the data-track file must be named
+   `track03.bin`).
 
-## Modo desenvolvedor
-`jogar.bat "C:\caminho\do\dump"` — extrai, analisa, gera C, compila e roda direto.
-Apague `recomp\obj` e `ct2.exe` ao atualizar de versão (o `jogar.bat` só recompila se `VERSION.txt` mudou).
+## How to play (ready-made build with launcher)
+1. Run `launcher\build.bat` — it creates `dist\CrazyTaxi2_<version>\` (the "ready version").
+2. Open `dist\CrazyTaxi2_<version>\CrazyTaxi2.exe`.
+3. Click **SELECT FILES** and pick the `.gdi` / `track03.bin`. The launcher validates the disc, extracts the files
+   (progress bar) and unlocks **PLAY**.
+4. **PLAY** generates C code from your disc, compiles it (slow the first time) and starts the game.
 
-## Estrutura
-- `tools/` — extrator GD-ROM, análise, classificação, tradutor SH-4→C (`sh4c.py`)
-- `recomp/` — runtime (`boot.c`, `sh4rt.*`, `ta.c`/`gpu11.inc` D3D11, `aica.*`, `win.c`, `menux.inc` opções)
-- `launcher/` — launcher Win32 (fonte, assets, `build.bat`)
-- `ghidra/`, `names_manual.csv`, `extra_entries.txt` — apoio à análise
-- `docs/CHANGELOG.md` — histórico por versão; `docs/LAUNCHER_PLAN.md`
+## Developer mode
+`jogar.bat "C:\path\to\dump"` — extracts, analyzes, generates C, compiles and runs directly.
+When updating to a new version, delete `recomp\obj` and `ct2.exe` (`jogar.bat` only rebuilds when `VERSION.txt` changes).
 
-## Recursos
-Widescreen (com correção de culling nas bordas), controles teclado/XInput com turbo dash, menu de opções, VMU/saves em arquivo, filtro anisotrópico, entre outros — veja o changelog.
+## Layout
+- `tools/` — GD-ROM extractor, analysis, classification, SH-4→C translator (`sh4c.py`)
+- `recomp/` — runtime (`boot.c`, `sh4rt.*`, `ta.c`/`gpu11.inc` D3D11, `aica.*`, `win.c`, `menux.inc` options menu)
+- `launcher/` — Win32 launcher (source, assets, `build.bat`)
+- `ghidra/`, `names_manual.csv`, `extra_entries.txt` — analysis support
+- `docs/CHANGELOG.md` — per-version history (in Portuguese); `docs/LAUNCHER_PLAN.md`
+
+## Features
+Widescreen (with edge-culling fix), keyboard/XInput controls with turbo dash, options menu, file-based VMU saves,
+anisotropic filtering, and more — see the changelog.
