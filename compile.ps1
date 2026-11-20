@@ -31,6 +31,6 @@ foreach($f in ($funcs + $small)){
 $bad=0; foreach($j in $jobs){ $j.P.WaitForExit(); $ok = (Test-Path $j.O); if($j.P.ExitCode -ne $null -and $j.P.ExitCode -ne 0){ $ok=$false }; if(-not $ok){ Write-Host "FALHOU: $($j.N)"; $bad=1; Remove-Item $j.O,($j.O+".hash") -ErrorAction SilentlyContinue } }
 if($bad){ exit 1 }
 Write-Host "ligando ct2.exe..."
-& $CC (Get-ChildItem obj\*.o | ForEach-Object { $_.FullName }) -o ..\ct2.exe -luser32 -lgdi32
+& $CC (Get-ChildItem obj\*.o | ForEach-Object { $_.FullName }) -o ..\ct2.exe -luser32 -lgdi32 -lshell32
 if($LASTEXITCODE -ne 0){ exit 1 }
 exit 0

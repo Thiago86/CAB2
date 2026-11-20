@@ -483,7 +483,13 @@ int main(int argc,char**argv){
     FILE*f=fopen(argv[1],"rb"); if(!f){ perror(argv[1]); return 2; } size_t n=fread(c.ram+0x10000,1,RAM_SIZE-0x10000,f); fclose(f);
     printf("1ST_READ.BIN: %zu bytes em 0x8C010000\n",n);
     if(argc>2 && strcmp(argv[2],"-")){ f=fopen(argv[2],"rb"); if(f){ size_t m=fread(c.ram+0x8000,1,0x8000,f); fclose(f); printf("IP.BIN: %zu bytes em 0x8C008000 (premissa: o BIOS o carregaria ai)\n",m);} }
-    if(argc>5){ trk=fopen(argv[5],"rb"); if(!trk) fprintf(stderr,"aviso: nao abri %s\n",argv[5]); }
+    if(argc>5){ trk=fopen(argv[5],"rb");
+#ifdef CT2_WINDOW
+        /* v15zzn: caminho com acento/Unicode: o argv do console vira ANSI e perde caracteres; reabre pela linha de comando ampla (win.c) */
+        if(!trk){ extern FILE *ct2_open_arg_w(int idx); trk=ct2_open_arg_w(5); }
+        if(!trk){ extern FILE *ct2_open_ini_track(void); trk=ct2_open_ini_track(); }
+#endif
+        if(!trk){ fprintf(stderr,"ERRO: nao consegui abrir a trilha de dados do disco: %s\n(o jogo precisa dela para ler os arquivos; confira o caminho do track03.bin)\n",argv[5]); printf("ERRO: nao consegui abrir a trilha de dados do disco: %s\n",argv[5]); return 2; } }
     if(argc>6) max_ticks=(unsigned)atoi(argv[6]);
     aica_init(aram);
     setup_bios();

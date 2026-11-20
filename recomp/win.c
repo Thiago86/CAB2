@@ -227,3 +227,9 @@ void win_audio_start(void (*render)(int16_t*,int)){
     for(int i=0;i<ABUF;i++){ a_hdr[i].lpData=(LPSTR)a_buf[i]; a_hdr[i].dwBufferLength=ASAMP*4; prep(a_hwo,&a_hdr[i],sizeof(WAVEHDR)); }
     CreateThread(0,0,audio_thread,0,0,0);
 }
+
+/* v15zzn: abre o argumento idx da linha de comando (Unicode) como arquivo binario de leitura; 0 se falhar */
+#include <shellapi.h>
+FILE *ct2_open_arg_w(int idx){ int n=0; wchar_t **a=CommandLineToArgvW(GetCommandLineW(),&n); FILE *f=0; if(a&&n>idx) f=_wfopen(a[idx],L"rb"); if(a) LocalFree(a); return f; }
+/* v15zzn: fallback: caminho UTF-8 do track03.bin gravado pelo launcher em launcher.ini (o .bat pode ter estragado acentos) */
+FILE *ct2_open_ini_track(void){ FILE *i=fopen("launcher.ini","rb"); if(!i) return 0; char l[2200]; FILE *f=0; while(fgets(l,sizeof l,i)){ size_t n=strlen(l); while(n&&(l[n-1]=='\\r'||l[n-1]=='\\n')) l[--n]=0; if(!strncmp(l,"track=",6)){ wchar_t w[1100]; if(MultiByteToWideChar(CP_UTF8,0,l+6,-1,w,1100)) f=_wfopen(w,L"rb"); break; } } fclose(i); return f; }
