@@ -58,7 +58,8 @@ static inline void rt_enter(CPU*c,uint32_t a){
  if(rt_trace_on){ uint32_t o=((a&0x1FFFFFFFu)-0x0C010000u)>>1; if(o<0x80000) rt_trace_map[o]=1; { extern uint32_t rt_trace_stk; if((a&0x1FFFFFFFu)==rt_trace_stk){ static int n=0; if(n++<3){ printf("[stk] %08x <-",a); for(int q=c->sp-1;q>=0&&q>c->sp-14;q--) printf(" %08x",c->stk[q]&0x1FFFFFFFu); printf("\n"); fflush(stdout);} } } }
 #endif
  if(rt_watch_n){ for(int i=0;i<rt_watch_n;i++) if((a&0x1FFFFFFFu)==rt_watch[i]) rt_watch_hit(c,a,i); if(rt_rng_on) rt_rng_hit(c,a); } rt_tick(c); if(c->sp>=0&&c->sp<RT_STK) c->stk[c->sp]=a; c->sp++; }
-static inline void rt_leave(CPU*c){ c->sp--; }
+extern int rt_post_on; extern void rt_post_hit(struct CPU*c,uint32_t a);
+static inline void rt_leave(CPU*c){ c->sp--; if(rt_post_on&&c->sp>=0&&c->sp<RT_STK) rt_post_hit(c,c->stk[c->sp]); }
 static inline uint8_t *rt_ptr(CPU *c, uint32_t a) {
     a &= 0x1FFFFFFFu;
     if (a >= 0x0C000000u && a < 0x10000000u) return c->ram + (a & (RAM_SIZE-1));

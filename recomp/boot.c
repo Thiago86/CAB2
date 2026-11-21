@@ -370,7 +370,8 @@ int rt_rng_on=0; static uint32_t rng_lo,rng_hi; static unsigned rng_from; static
 void rt_rng_hit(struct CPU*cc,uint32_t a){ uint32_t pa=a&0x1FFFFFFFu; extern unsigned ta_cur_frame; if(pa<rng_lo||pa>=rng_hi||ta_cur_frame<rng_from) return; uint32_t o=(pa-0x0C010000u)>>1; if(o>=0x80000||rng_seen[o]) return; rng_seen[o]=1;
     printf("[rng] f%u f_%08x <-",ta_cur_frame,pa); for(int q=cc->sp-1;q>=0&&q>cc->sp-5;q--) printf(" %08x",cc->stk[q]&0x1FFFFFFFu); printf("\n"); }
 static void __attribute__((constructor)) rng_init(void){ const char*e=getenv("CT2_RANGE"); if(e){ unsigned lo,hi,f=0; if(sscanf(e,"%x,%x,%u",&lo,&hi,&f)>=2){ rng_lo=lo; rng_hi=hi; rng_from=f; rt_rng_on=1; rt_watch_n=1; rt_watch[0]=0xFFFFFFFFu; } } }
-void rt_watch_hit(CPU*cc,uint32_t a,int i){ static unsigned n[16]; if(i<perf_nw){ perf_wc[i]++; return; } if(n[i]++<20||((n[i]&(n[i]-1))==0)) printf("[watch] f%u chamada de f_%08x (r4=%08x r5=%08x r6=%08x) n=%u\n",frame_no,a&0x1FFFFFFFu,cc->r[4],cc->r[5],cc->r[6],n[i]); }
+extern void ct2_draw_pre(CPU*,uint32_t);
+void rt_watch_hit(CPU*cc,uint32_t a,int i){ if((a&0x1FFFFFFFu)==0x0c080e80u||(a&0x1FFFFFFFu)==0x0c086eb0u||(a&0x1FFFFFFFu)==0x0c087b80u){ ct2_draw_pre(cc,a); return; } static unsigned n[16]; if(i<perf_nw){ perf_wc[i]++; return; } if(n[i]++<20||((n[i]&(n[i]-1))==0)) printf("[watch] f%u chamada de f_%08x (r4=%08x r5=%08x r6=%08x) n=%u\n",frame_no,a&0x1FFFFFFFu,cc->r[4],cc->r[5],cc->r[6],n[i]); }
 static void hw_w(CPU *cc,uint32_t a,uint32_t v,int size){ (void)cc;
     if(a>=0xE0000000u&&a<0xE4000000u){ sq[(a>>5)&1][(a>>2)&7]=v; return; }
     { static int en=-1; static int nl; if(en<0) en=GENV("CT2_ARAMWR")?atoi(GENV("CT2_ARAMWR")):0; uint32_t k=keyof(a); if(en==4&&frame_no>2000&&k>=0x00800000u&&k<0x00A00000u){ static unsigned long long cn[64][4]; static unsigned lastf; cn[((k&0x1FFFFF)>>16)&31][0]++; if(frame_no>=lastf+500){ lastf=frame_no; printf("[aramwr4] f%u:",frame_no); for(int q=0;q<32;q++) if(cn[q][0]) printf(" %x0000:%llu",q,cn[q][0]); printf("  ult f_%08x\n",c.sp>0&&c.sp<=RT_STK?c.stk[c.sp-1]&0x1FFFFFFFu:0); } }
@@ -495,6 +496,7 @@ int main(int argc,char**argv){
     setup_bios();
     memset(c.ram+0x7C,0xFF,4);   /* cache de configuracao do SDK (idioma/audio em 0x8C00007D/7E): 0xFF = ainda nao lido do flash (premissa; com 0 o jogo assume japones) */
     if(!GENV("CT2_WATCH")){ rt_watch[0]=0x0c149a1eu; rt_watch[1]=0x0c01a1d4u; rt_watch[2]=0x0c033b1eu; rt_watch_n=3; perf_nw=3; }
+    rt_watch[rt_watch_n++]=0x0c080e80u; rt_watch[rt_watch_n++]=0x0c086eb0u; rt_watch[rt_watch_n++]=0x0c087b80u;
     { const char*w=GENV("CT2_WATCH"); while(w&&*w&&rt_watch_n<16){ rt_watch[rt_watch_n++]=(uint32_t)strtoul(w,(char**)&w,16); if(*w==',') w++; } }
     c.r[15]=0x8C00F400u; c.fpscr=0; c.vbr=0x8C000000u; ta_eol_cb=eol_cb; rt_pref_cb=pref_cb; { const char*e=GENV("CT2_FRAMES"); if(e) frames_dir=e; } rt_tick_cb=tick; rt_hw_read_cb=hw_r; rt_hw_write_cb=hw_w;
 #ifndef _WIN32
@@ -564,5 +566,12 @@ static void __attribute__((constructor)) rd_init(void){ const char*e=getenv("CT2
 
 /* v15zzi: widescreen. O jogo descarta objetos inteiros cujo centro projeta alem de uma extensao horizontal (0x8c2bde50 = 717 px em jogo, lida pela rotina de desenho 0c080e80; fora disso predios/pedestres sumiam nas bordas do widescreen mesmo com o 3D desenhado alem dos 640). Aqui essa extensao e multiplicada em widescreen (k = 1+6*(largura/640-1), no maximo 8; 16:9 = 3x, testado no harness: diferenca para "sem descarte" cai de ~87% para ~2%). A rotina de camera (0c0747b0 / 0c074a30) regrava o valor quando muda a cena: detectamos pelo valor e partimos do original de novo. */
 float ta_wide_cull=1.0f;
-void ct2_cull_apply(CPU*c){ static float mine=0, orig=0; float k=ta_wide_cull; if(GENV("CT2_NOCULLFIX")) k=1.f; float v; memcpy(&v,c->ram+0x2bde50,4); if(!(v>50.f&&v<1e5f)) return; if(!(mine!=0&&v==mine)) orig=v; float nv=orig*k; memcpy(c->ram+0x2bde50,&nv,4); mine=nv;
+void ct2_cull_apply(CPU*c){ static float mine=0, orig=0; float k=ta_wide_cull; if(GENV("CT2_NOCULLFIX")) k=1.f; if(GENV("CT2_CULLK")) k=(float)atof(GENV("CT2_CULLK")); float v; memcpy(&v,c->ram+0x2bde50,4); if(!(v>50.f&&v<1e5f)) return; if(!(mine!=0&&v==mine)) orig=v; float nv=orig*k; memcpy(c->ram+0x2bde50,&nv,4); mine=nv; if(GENV("CT2_CULLY")){ static float oy=0,my=0; float y; memcpy(&y,c->ram+0x2bde54,4); if(y>10.f&&y<1e5f){ if(!(my!=0&&y==my)) oy=y; float ny=oy*(float)atof(GENV("CT2_CULLY")); memcpy(c->ram+0x2bde54,&ny,4); my=ny; if(GENV("CT2_CULLDBG")){ static int q=0; if(q++<3) printf("[cull] y orig %.1f x orig %.1f\n",oy,orig); } } }
     if(GENV("CT2_CULLDBG")){ static float lk=0; static int q=0; if(k!=lk&&q++<30){ lk=k; printf("[cull] f%u k=%.3f ext %.1f -> %.1f\n",frame_no,k,orig,nv); } } }
+
+/* v15zzzd: o teste de visibilidade das rotinas de desenho de malha (0c080e80 / 0c087b80) tambem compara com o retangulo da tela 640x480 (0x8c1454bc / c0). Em widescreen esse retangulo precisa ser alargado so durante essas rotinas (as demais usam 640 como escala de projecao). */
+float ta_wide_sx=1.0f;
+int rt_post_on=0; static uint32_t pe_save[2]; static int pe_act=0;
+/* a rotina testa a esfera do objeto contra os planos da tela: esquerda em x'=c4 (0x8c1454c4, normalmente 0) e direita em bc (0x8c1454bc = 640). Alargamos so durante a chamada: esquerda -e, direita 640+e (e = 320*(sx-1)); o resto do jogo usa esses valores como escala de projecao. */
+void ct2_draw_pre(CPU*c,uint32_t a){ (void)a; float sx=ta_wide_sx; if(pe_act||sx<=1.001f||GENV("CT2_NOCULLFIX")) return; float e=320.f*(sx-1.f); memcpy(pe_save,c->ram+0x1454bc,4); memcpy(pe_save+1,c->ram+0x1454c4,4); float bc,c4; memcpy(&bc,pe_save,4); memcpy(&c4,pe_save+1,4); if(!(bc>100.f&&bc<5000.f)) return; bc+=2.f*e; c4-=e; memcpy(c->ram+0x1454bc,&bc,4); memcpy(c->ram+0x1454c4,&c4,4); pe_act=1; rt_post_on=1; }
+void rt_post_hit(CPU*c,uint32_t a){ a&=0x1FFFFFFFu; if(pe_act&&(a==0x0c080e80u||a==0x0c086eb0u||a==0x0c087b80u)){ memcpy(c->ram+0x1454bc,pe_save,4); memcpy(c->ram+0x1454c4,pe_save+1,4); pe_act=0; rt_post_on=0; } }

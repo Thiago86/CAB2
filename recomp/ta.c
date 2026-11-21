@@ -429,7 +429,7 @@ static void ta_apply_canvas(void){
     int flat3d=0; if(sx>1.001f&&!GENV("CT2_WIDEMENU")){ size_t n3=0; for(size_t i=0;i<ntri;i++){ const Tri*t=&tris[i]; { float z0=t->v[0].z; if(fabsf(t->v[1].z-z0)>1e-4f*fabsf(z0)||fabsf(t->v[2].z-z0)>1e-4f*fabsf(z0)) n3++; } } flat3d=(n3<30||mx_screen!=MXS_NONE); { static int lastf=-1; if(flat3d!=lastf){ lastf=flat3d; printf("[wide] f%u quadro sem 3D=%d (nao-planos=%zu, tela menux=%d)\n",ta_cur_frame,flat3d,n3,(int)mx_screen); } } if(GENV("CT2_WIDEDBG")&&(ta_cur_frame%120)==3) printf("[wide] f%u ntri=%zu n3=%zu flat=%d sx=%.3f\n",ta_cur_frame,ntri,n3,flat3d,sx); } ta_flat3d=flat3d; { static unsigned lfb=0; if(ta_cur_frame!=lfb||ta_cur_frame==0){ lfb=ta_cur_frame; ta_bars_black=flat3d; } }   /* v15zzf: barras laterais SEMPRE pretas em menus/carregamento (1a passada do quadro decide) */
     /* v15zz: FOV real no 3D: o jogo nao recorta a geometria em 640, entao desenhar a cena SEM esticar (centralizada) mostra mais mundo dos lados; CT2_STRETCH3D=1 volta a esticar */
     int shift_all=flat3d||(sx>1.001f&&!GENV("CT2_STRETCH3D"));
-    { extern float ta_wide_cull; ta_wide_cull=(sx>1.001f&&!GENV("CT2_STRETCH3D"))?fminf(8.f,1.f+6.f*(sx-1.f)):1.0f; }   /* v15zzi: o jogo passa a descartar objetos so fora do campo de visao alargado */
+    { extern float ta_wide_cull, ta_wide_sx; ta_wide_sx=(sx>1.001f&&!GENV("CT2_STRETCH3D"))?sx:1.0f; ta_wide_cull=(sx>1.001f&&!GENV("CT2_STRETCH3D"))?fminf(8.f,1.f+6.f*(sx-1.f)):1.0f; }   /* v15zzi: o jogo passa a descartar objetos so fora do campo de visao alargado */
     for(size_t i=0;i<nmv;i++) for(int k=0;k<3;k++){ mvs[i].x[k]=shift_all?(mvs[i].x[k]+ex)*RS:mvs[i].x[k]*sx*RS; mvs[i].y[k]*=RS; }
     for(size_t i=0;i<ntri;i++){ Tri*t=&tris[i]; int stretch=1; float dx=0;
         if(shift_all){ stretch=0; dx=ex; } else if(sx>1.001f){ int ui=1; float x0=1e9f,x1=-1e9f; for(int k=0;k<3;k++){ if(t->v[k].z<1.0f) ui=0; if(t->v[k].x<x0) x0=t->v[k].x; if(t->v[k].x>x1) x1=t->v[k].x; }
@@ -496,6 +496,7 @@ static const uint32_t *aa_finish(void){
 }
 static const uint32_t *aa_finish2(void){
     int m=ta_aa_mode; if(m<=0||m>4||aa_skip) return fb;
+    if(m<3&&(size_t)RW*RH>=6000000&&!GENV("CT2_AA4K")) return fb;   /* v15zzzd: o pos-filtro por CPU (BASIC/FXAA) em ~4K e caro (8 Mpixels/quadro) e quase invisivel nessa resolucao */
     if(GENV("CT2_AADBG")) fprintf(stderr,"[aa] mode=%d RW=%d RH=%d OW=%d OH=%d\n",ta_aa_mode,RW,RH,OW,OH);
     if(m>=3){ if(RW==OW&&RH==OH) m=2; else m=3; }
     AaArg a={m}; int rows=(m==3)?OH:RH; par_run(aa_job,&a,(rows+AAROWS-1)/AAROWS,1);
@@ -626,7 +627,7 @@ static const uint32_t *render_impl(const uint8_t*vram,const uint32_t*pal,uint32_
       } }
     static const int order[3]={0,4,2};
     if(use_gpu){ if(!gpu_draw(vram,pal,palctl)){ for(int i=0;i<RW*RH;i++) fb[i]=ta_bars_black?0xFF000000u:0xFF202020u; } } else render_bands(vram,pal,palctl,order);
-    if(!dual3d && !snap_used && ntri>1500){ memcpy(lastscene,fb,(size_t)RW*RH*4); ls_w=RW; ls_h=RH; have_scene=1; }
+    if(!dual3d && !snap_used && ntri>1500 && (!have_scene||(ta_cur_frame&7)==0||(size_t)RW*RH<2000000)){ memcpy(lastscene,fb,(size_t)RW*RH*4); ls_w=RW; ls_h=RH; have_scene=1; }   /* v15zzzd: em 2K/4K copia so 1 quadro em 8 (a copia serve so ao fundo do menu de pausa; 33 MB por quadro em 4K) */
     if(ZT){ for(int l=0;l<5;l++) for(int m=0;m<8;m++) if(zh_t[l][m]){ printf("ZH list=%d dm=%d tests=%u ties=%u tiefail=%u\n",l,m,zh_t[l][m],zh_tie[l][m],zh_tiefail[l][m]); } memset(zh_t,0,sizeof zh_t); memset(zh_tie,0,sizeof zh_tie); memset(zh_tiefail,0,sizeof zh_tiefail); printf("ZTIE frame %u: lose=%u win=%u\n",ta_cur_frame,zt_n,zt_w); ZT=0; }
     if(save_live){ save_live=0; FILE*pf=fopen("glitch_frame.ppm","wb"); if(pf){ fprintf(pf,"P6\n%d %d\n255\n",RW,RH); for(int i=0;i<RW*RH;i++){ unsigned char p3[3]={(unsigned char)(fb[i]>>16),(unsigned char)(fb[i]>>8),(unsigned char)fb[i]}; fwrite(p3,1,3,pf); } fclose(pf); }
         int nsh=0,nmesh=nmv?mvs[nmv-1].mesh+1:0; for(int i=0;i<RW*RH;i++) nsh+=shb[i]; FILE*lf=fopen("glitch_info.txt","w"); if(lf){ fprintf(lf,"quadro %u canvas %dx%d RBX=%.1f RS=%.2f upscale=%d aspect=%d res=%d tris=%zu mv=%zu malhas=%d pixels_receptores=%d sombra=%.2f\n",ta_cur_frame,RW,RH,RBX,RS,ta_upscale,ta_aspect,ta_res_i,ntri,nmv,nmesh,nsh,ta_shad); fclose(lf); } printf("[dump] glitch_frame.ppm + glitch_info.txt\n"); }
@@ -637,7 +638,7 @@ static const uint32_t *render_impl(const uint8_t*vram,const uint32_t*pal,uint32_
             for(int i=0;i<RW*RH;i++) zb[i]=-1.f;
             ta_apply_canvas(); for(size_t i=0;i<ntri;i++) setplanes(&tris[i]); assign_tc(vram,pal,palctl); render_bands(vram,pal,palctl,order);
             tris=st; ntri=sn; nmv=sm; captri=sc_; }
-        if(!snap_used && ntri_all>1500){ memcpy(lastscene,fb,(size_t)RW*RH*4); ls_w=RW; ls_h=RH; have_scene=1; }
+        if(!snap_used && ntri_all>1500 && (!have_scene||(ta_cur_frame&7)==0||(size_t)RW*RH<2000000)){ memcpy(lastscene,fb,(size_t)RW*RH*4); ls_w=RW; ls_h=RH; have_scene=1; }
         return fb; }
     return aa_finish();
 }
