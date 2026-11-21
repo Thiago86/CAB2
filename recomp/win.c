@@ -10,7 +10,7 @@ void menux_filter(unsigned short *pb,unsigned char *rt,unsigned char *lt);
 #define FH 480
 extern int ta_res_i, ta_aspect, ta_disp_gen, ta_fb_w, ta_fb_h; extern const int ta_res_tab[10][2]; void ta_load_settings(void); const char *ta_gpu_name(void); void ta_save_settings(void);
 static HWND hwnd=0; static int quit=0; static uint32_t pix[3840*2160]; static BITMAPINFO bmi; static int inited=0; static int curw=FW, curh=FH; static int d_gen=0, d_mode=0;
-extern int ta_direct_frame; int ta_gpu_present(int redo); int ta_direct_active(void);
+extern int ta_direct_frame; int ta_gpu_present(int redo); int ta_direct_active(void); void ta_gpu_release(void);
 static int w_splash=0;   /* v15zzze: durante as telas de abertura o WM_PAINT nao repinta o ultimo quadro do jogo */
 static int win_active(void){ return hwnd&&!IsIconic(hwnd)&&GetForegroundWindow()==hwnd; }   /* v15zzy: minimizado / sem foco = nao le teclado nem controle */
 static void disp_restore(void){ if(d_mode){ ChangeDisplaySettingsA(0,0); d_mode=0; } }
@@ -107,7 +107,7 @@ static int splash_one(const char*path,int ms){
     for(int i=0;i<W*H;i++) px[i]=((uint32_t)rgb[i*3]<<16)|((uint32_t)rgb[i*3+1]<<8)|rgb[i*3+2]; free(rgb);
     init(); BITMAPINFO bi; memset(&bi,0,sizeof bi); bi.bmiHeader.biSize=sizeof(BITMAPINFOHEADER); bi.bmiHeader.biWidth=W; bi.bmiHeader.biHeight=-H; bi.bmiHeader.biPlanes=1; bi.bmiHeader.biBitCount=32; bi.bmiHeader.biCompression=BI_RGB;
     HBRUSH bg=CreateSolidBrush(RGB(0,0,0));   /* barras sempre pretas */
-    double t0=win_now_ms(); int skip=0; int armed=0; w_splash=1;
+    double t0=win_now_ms(); int skip=0; int armed=0; w_splash=1; ta_gpu_release();   /* GDI nao aparece sobre uma swap chain flip */
     while(win_now_ms()-t0<ms&&!skip){
         if(!win_pump()){ skip=1; break; }
         if(hwnd){ HDC dc=GetDC(hwnd); RECT rc; GetClientRect(hwnd,&rc); if(rc.right>0&&rc.bottom>0){ int dw=rc.right,dh=rc.bottom,dx=0,dy=0; float ia=4.f/3.f; if(ta_aspect==0) ia=(float)dw/(float)dh;   /* STRETCH: preenche a janela; demais modos: 4:3 centralizado com barras */ if((float)dw/(float)dh>ia){ int nw=(int)(dh*ia+.5f); dx=(dw-nw)/2; dw=nw; } else { int nh=(int)(dw/ia+.5f); dy=(dh-nh)/2; dh=nh; }
