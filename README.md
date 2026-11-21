@@ -28,7 +28,7 @@ Hotkeys: F4 renderer (GPU/CPU), F11 window/fullscreen, F5/F6/F7 graphics diagnos
 Direct GPU presentation can be disabled with a `no_direct.txt` file next to the exe, or `CT2_GPUDIRECT=0`.
 
 ## Status
-Most of the game is playable. Windows-specific parts are developed without access to a Windows machine and verified by the author's testing; each changelog entry states what is **not** verified. Known pending items: HUD anchoring in widescreen, free camera on the right stick, some audio/voice details.
+The whole game is playable from start to finish. Windows-specific parts are developed without access to a Windows machine and verified by the author's testing; each changelog entry states what is **not** verified. Known pending items: HUD anchoring in widescreen, free camera on the right stick, some audio/voice details.
 
 ## Documentation
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — full history and technical notes (currently in Portuguese).
@@ -67,7 +67,7 @@ Teclas: F4 renderizador (GPU/CPU), F11 janela/tela cheia, F5/F6/F7 diagnóstico 
 A apresentação direta pela GPU se desliga com um arquivo `no_direct.txt` ao lado do exe, ou `CT2_GPUDIRECT=0`.
 
 ### Estado
-A maior parte do jogo é jogável. As partes específicas do Windows são desenvolvidas sem acesso a uma máquina Windows e validadas nos testes do autor; cada entrada do changelog diz o que **não** foi verificado. Pendências conhecidas: HUD ancorado no widescreen, câmera livre no analógico direito, alguns detalhes de áudio/voz.
+O jogo inteiro é jogável do início ao fim. As partes específicas do Windows são desenvolvidas sem acesso a uma máquina Windows e validadas nos testes do autor; cada entrada do changelog diz o que **não** foi verificado. Pendências conhecidas: HUD ancorado no widescreen, câmera livre no analógico direito, alguns detalhes de áudio/voz.
 
 ### Documentação
 - [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — histórico completo e notas técnicas (em português).
