@@ -155,6 +155,17 @@ double win_now_ms(void){ static LARGE_INTEGER f; LARGE_INTEGER n; if(!f.QuadPart
 void win_perf(double fps,double render_ms,double present_ms,int skipped){ snprintf(w_pf,sizeof w_pf,"[%.0f fps | desenho %.1f ms | tela %.1f ms | pulados %d/60]",fps,render_ms,present_ms,skipped); w_title(); }
 int win_hotkeys(void){ static int prev[4]; int r=0; static const int vk[4]={VK_F1,VK_F2,VK_F3,VK_F4}; static const int vk2[4]={'1','2','3','4'}; for(int i=0;i<4;i++){ int d=win_active()&&(((GetAsyncKeyState(vk[i])&0x8000)!=0)||((GetAsyncKeyState(vk2[i])&0x8000)!=0)); if(d&&!prev[i]) r|=1<<i; prev[i]=d; } return r; }
 extern int ta_dump_req; extern int ta_toggle_timer(void); extern const char *ta_toggle_dbg(int);
+
+/* v15zzzg: deteccao de controles (XInput em slots vazios e varredura winmm de 16 IDs) pode levar >100 ms no Windows;
+   agora roda numa thread de fundo e o jogo so le o resultado */
+static volatile LONG w_xmask=0, w_jgen=0, w_jlock=0, w_jreq=0, w_jn=0; static int w_jids[16]; static const JProf *w_jpf[16]; static volatile LONG w_pstarted=0;
+static DWORD WINAPI w_probe_thread(LPVOID u){ (void)u; for(;;){
+    if(xget){ for(DWORD i=0;i<4;i++){ XState s; memset(&s,0,sizeof s); if(xget(i,&s)==0) InterlockedOr(&w_xmask,(LONG)(1L<<i)); else InterlockedAnd(&w_xmask,~(LONG)(1L<<i)); } }
+    if(jget&&!(w_xmask&15)){ int ids[16]; const JProf *pf[16]; int n=0;
+        for(UINT id=0;id<16;id++){ JoyEx j; memset(&j,0,sizeof j); j.dwSize=sizeof j; j.dwFlags=0xFF; if(jget(id,&j)!=0) continue; JoyCaps c; memset(&c,0,sizeof c); if(jcaps) jcaps(id,&c,sizeof c); ids[n]=(int)id; pf[n]=jprof(&c); n++; }
+        while(InterlockedExchange(&w_jlock,1)) Sleep(0); memcpy(w_jids,ids,sizeof ids); memcpy(w_jpf,pf,sizeof pf); w_jn=n; w_jgen++; InterlockedExchange(&w_jlock,0); }
+    for(int t=0;t<20&&!w_jreq;t++) Sleep(100); w_jreq=0; } return 0; }
+static void w_probe_start(void){ if(w_pstarted) return; w_pstarted=1; CreateThread(0,0,w_probe_thread,0,0,0); }
 void win_pad(uint16_t *buttons,uint8_t *rt,uint8_t *lt,uint8_t *jx,uint8_t *jy){
     uint16_t b=0xFFFF; int x=128,y=128,r=0,l=0;
     /* teclado: setas = direcional e analogico; Z/Espaco=A, C=B, X/A=X (destination display), S=Y, Enter/P/Tab/Esc nao = Start, Q=gatilho esquerdo, W=gatilho direito */
@@ -180,7 +191,7 @@ void win_pad(uint16_t *buttons,uint8_t *rt,uint8_t *lt,uint8_t *jx,uint8_t *jy){
     }
     if(!xtried){ xtried=1; HMODULE m=LoadLibraryA("xinput1_4.dll"); if(!m) m=LoadLibraryA("xinput9_1_0.dll"); if(!m) m=LoadLibraryA("xinput1_3.dll"); if(m){ xget=(XGetState)GetProcAddress(m,"XInputGetState"); xset=(XSetState)GetProcAddress(m,"XInputSetState"); } }
     int got=0;
-    if(xget&&win_active()){ for(DWORD idx=0;idx<4&&!got;idx++){ XState s; memset(&s,0,sizeof s); if(xget(idx,&s)!=0) continue; got=1; vib_apply(idx);
+    w_probe_start(); if(xget&&win_active()){ for(DWORD idx=0;idx<4&&!got;idx++){ if(!((w_xmask>>idx)&1)) continue; XState s; memset(&s,0,sizeof s); if(xget(idx,&s)!=0){ InterlockedAnd(&w_xmask,~(1L<<idx)); continue; } got=1; vib_apply(idx);
         { /* v15zz: botoes do controle configuraveis (Controller Setting > painel); padrao identico ao anterior */
           extern int ct2_pmap[11], ct2_pmap_custom, ct2_pad_cap, ct2_pad_got; int cu=ct2_pmap_custom;
           #define PD(idx) ((idx)<16?(((s.btn>>(idx))&1)!=0):((idx)==16?(s.lt>100):(s.rt>100)))
@@ -199,9 +210,8 @@ void win_pad(uint16_t *buttons,uint8_t *rt,uint8_t *lt,uint8_t *jx,uint8_t *jy){
     if(!got&&win_active()){   /* v15zzz: qualquer controle generico (DirectInput/HID via winmm) com layout por perfil: PlayStation, Switch Pro, Xbox legado e generico */
         static int jids[16], njid=0; static const JProf *jpf[16]; static DWORD lastscan=0; DWORD now=GetTickCount();
         if(!jtried){ jtried=1; HMODULE m=LoadLibraryA("winmm.dll"); if(m){ jget=(JoyGetPosEx)GetProcAddress(m,"joyGetPosEx"); jcaps=(JoyGetCaps)GetProcAddress(m,"joyGetDevCapsA"); } }
-        if(jget&&(njid==0&&now-lastscan>1000||now-lastscan>3000)){ lastscan=now; njid=0;   /* procura controles conectados a cada poucos segundos (hot-plug) */
-            for(UINT id=0;id<16;id++){ JoyEx j; memset(&j,0,sizeof j); j.dwSize=sizeof j; j.dwFlags=0xFF; if(jget(id,&j)!=0) continue; JoyCaps c; memset(&c,0,sizeof c); if(jcaps) jcaps(id,&c,sizeof c); jids[njid]=(int)id; jpf[njid]=jprof(&c); njid++; } }
-        for(int q=0;q<njid;q++){ JoyEx j; memset(&j,0,sizeof j); j.dwSize=sizeof j; j.dwFlags=0xFF; if(jget((UINT)jids[q],&j)!=0){ njid=0; lastscan=0; break; }
+        w_probe_start(); { static LONG seen=-1; if(seen!=w_jgen){ while(InterlockedExchange(&w_jlock,1)) Sleep(0); seen=w_jgen; njid=w_jn; memcpy(jids,w_jids,sizeof jids); memcpy(jpf,w_jpf,sizeof jpf); InterlockedExchange(&w_jlock,0); } }
+        for(int q=0;q<njid;q++){ JoyEx j; memset(&j,0,sizeof j); j.dwSize=sizeof j; j.dwFlags=0xFF; if(jget((UINT)jids[q],&j)!=0){ njid=0; w_jreq=1; break; }
             const JProf *p=jpf[q]; DWORD B=j.dwButtons;
             #define JB(i) ((i)>=0&&((B>>(i))&1u))
             if(JB(p->a)) b&=~(1u<<2); if(JB(p->b)) b&=~(1u<<1); if(JB(p->x)) b&=~(1u<<10); if(JB(p->y)) b&=~(1u<<9);
