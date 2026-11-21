@@ -88,7 +88,7 @@ static int mx_screen=MXS_NONE;
 static int mx_nrows=0, mx_sel=-1;       /* linhas de barras e a selecionada pelo jogo (EXIT = ultima) */
 static int mx_vact=0, mx_vanchor=0;     /* cursor virtual sobre a linha nova */
 /*gtype movido*/ static int mx_gtype_unused=0;                  /* tipo mostrado pelo jogo na tela de controle: 'A'=0 'B'=1 */
-enum { V_NONE=0, V_CHEATS=1, V_RES=11, V_ASP=12, V_UPS=13, V_FPS=14, V_SENS=21, V_VIEW=22, V_BRI=23 };   /* linhas virtuais (mx_vact) */
+enum { V_NONE=0, V_CHEATS=1, V_RES=11, V_SCR=12, V_ASP=13, V_UPS=14, V_FPS=15, V_SENS=21, V_VIEW=22, V_BRI=23 };   /* linhas virtuais (mx_vact) */
 static const int mx_up_pct[8]={100,114,129,143,157,171,186,200};
 static int mx_up_level(void){ int b=0; for(int i=0;i<8;i++) if(ta_upscale>=mx_up_pct[i]-3) b=i; return b; }
 static int mx_unlock_sel=0; static int mx_optlast=0;             /* na linha CHEATS: 0 = TIMER selecionado, 1 = UNLOCK ALL */
@@ -237,16 +237,17 @@ static void menux_frame(void){
         int vsel=mx_vact;
         if(vsel){ for(int i=0;i<nr;i++) if(MR[i].sel){ mx_barstyle(MR[i].first,MR[i].last,0); } }
         float cx=(MR[vib].x0+MR[vib].x1)/2.f, dxb=MR[vib].x0-33.f; if(fabsf(dxb)<3.f) dxb=0.f; float xv=478.f+dxb;
-        static const char*lbl[4]={"RESOLUTION","ASPECT","UPSCALE","ANTIALIASING"}; static const char*asp[3]={"STRETCH","SIDE BARS","WIDESCREEN EXP"};
-        for(int row=0;row<4;row++){   /* linhas novas no alto: y virtual -40, -4, 32, 68 */
-            float y0=104.f-36.f*(4-row); int vid=V_RES+row;
+        static const char*lbl[5]={"RESOLUTION","SCREEN","ASPECT","UPSCALE","ANTIALIASING"}; static const char*asp[3]={"STRETCH","SIDE BARS","WIDESCREEN EXP"};
+        for(int row=0;row<5;row++){   /* linhas novas no alto (v15zzzc: 5 com SCREEN): y virtual -76, -40, -4, 32, 68 */
+            float y0=104.f-36.f*(5-row); int vid=V_RES+row;
             size_t n0=ntri; for(int i=MR[vib].first;i<=MR[vib].last;i++) mx_new(&tris[i]);
             mx_shift(n0,ntri-1,0,y0-MR[vib].y0); mx_barstyle(n0,ntri-1,vsel==vid);
-            { char lb[32]; if(row==2) snprintf(lb,sizeof lb,"UPSCALE %d%%",ta_upscale); else snprintf(lb,sizeof lb,"%s",lbl[row]); mx_text(&gtpl,lb,cx,y0+9,1.f); }
-            char vb[48]; vb[0]=0; if(row==0){ int ri=ta_res_i%10; snprintf(vb,sizeof vb,"%dX%d %s",ta_res_tab[ri][0],ta_res_tab[ri][1],(ta_res_i/10==2)?"BORDERLESS":(ta_res_i/10==1)?"FULLSCREEN":"WINDOW"); }
-            else if(row==1) snprintf(vb,sizeof vb,"%s",asp[ta_aspect%3]); else if(row==3){ static const char*aan[5]={"OFF","BASIC","FXAA","SSAA 1.5X","SSAA 2X"}; snprintf(vb,sizeof vb,"%s",aan[(ta_aa_mode>=0&&ta_aa_mode<5)?ta_aa_mode:0]); }
+            { char lb[32]; if(row==3) snprintf(lb,sizeof lb,"UPSCALE %d%%",ta_upscale); else snprintf(lb,sizeof lb,"%s",lbl[row]); mx_text(&gtpl,lb,cx,y0+9,1.f); }
+            char vb[48]; vb[0]=0; if(row==0){ int ri=ta_res_i%10; snprintf(vb,sizeof vb,"%dX%d",ta_res_tab[ri][0],ta_res_tab[ri][1]); }
+            else if(row==1) snprintf(vb,sizeof vb,"%s",(ta_res_i/10==2)?"BORDERLESS":(ta_res_i/10==1)?"FULLSCREEN":"WINDOW");
+            else if(row==2) snprintf(vb,sizeof vb,"%s",asp[ta_aspect%3]); else if(row==4){ static const char*aan[5]={"OFF","BASIC","FXAA","SSAA 1.5X","SSAA 2X"}; snprintf(vb,sizeof vb,"%s",aan[(ta_aa_mode>=0&&ta_aa_mode<5)?ta_aa_mode:0]); }
             if(vb[0]){ float w=mx_textw(vb,1.f), sc=(w>232.f)?232.f/w:1.f; mx_text(&gtpl,vb,xv,y0+9+(1.f-sc)*8.f,sc); }
-            else if(row==2&&nsl>0){   /* UPSCALE: clona o controle deslizante do MUSIC VOLUME */
+            else if(row==3&&nsl>0){   /* UPSCALE: clona o controle deslizante do MUSIC VOLUME */
                 /* O molde e o MUSIC VOLUME do jogo, mas ele so desenha os blocos ACESOS: mexer no volume mudava o tamanho da barra de UPSCALE.
                    Guardo um bloco (2 triangulos) e o passo entre blocos quando ha 2+ acesos e monto sempre os 8 blocos. */
                 static Tri ctpl[2]; static float cpitch=0.f, cyref=0.f, cxref=0.f; static int chave=0;
@@ -274,7 +275,7 @@ static void menux_frame(void){
         /* comprime tudo (entre o titulo e a barra de ajuda) para caber as 4 linhas novas */
         for(size_t i=0;i<ntri;i++){ Tri*t=&tris[i]; float y0=1e9f,y1=-1e9f,x0=1e9f,x1=-1e9f; for(int k=0;k<3;k++){ y0=fminf(y0,t->v[k].y); y1=fmaxf(y1,t->v[k].y); x0=fminf(x0,t->v[k].x); x1=fmaxf(x1,t->v[k].x); }
             if(i<nstart&&(y0<94.f||y1>414.f||x1-x0>=600.f)) continue;   /* so as linhas do jogo da faixa do meio; as novas sempre */
-            for(int k=0;k<3;k++){ t->v[k].y=104.f+(t->v[k].y+40.f)*0.72f; t->v[k].x=320.f+(t->v[k].x-320.f)*0.72f; } }
+            for(int k=0;k<3;k++){ t->v[k].y=104.f+(t->v[k].y+76.f)*0.69f; t->v[k].x=320.f+(t->v[k].x-320.f)*0.72f; } }
         mx_nrows=nr;
         return;
     }
@@ -416,14 +417,14 @@ void menux_filter(uint16_t *pb,uint8_t *rt,uint8_t *lt){
         if(!mx_vact){
             if((pr&K_DN)&&onvib){ mx_vact=V_CHEATS; mx_vanchor=0; hold|=K_DN; }
             else if((pr&K_UP)&&onexit){ mx_vact=V_CHEATS; mx_vanchor=1; hold|=K_UP; }
-            else if((pr&K_UP)&&onaud){ mx_vact=V_FPS; mx_vanchor=0; hold|=K_UP; }            /* AUDIO -> cima -> ANTIALIASING (ultima das 4 linhas novas) */
+            else if((pr&K_UP)&&onaud){ mx_vact=V_FPS; mx_vanchor=0; hold|=K_UP; }            /* AUDIO -> cima -> ANTIALIASING (ultima das 5 linhas novas) */
         } else if(mx_vact>=V_RES){   /* linhas novas no alto: o cursor do jogo fica em AUDIO */
             hold|=(pr&(K_LR|K_A|(1u<<10)));    /* o jogo nao pode trocar STEREO/MONO enquanto se mexe aqui */
             if(pr&K_UP){ if(mx_vact>V_RES) mx_vact--; hold|=K_UP; }
             else if(pr&K_DN){ if(mx_vact<V_FPS){ mx_vact++; hold|=K_DN; } else { mx_vact=0; hold|=K_DN; } }
-            else if((pr&K_A)&&mx_vact==V_RES){ ta_res_i=((ta_res_i/10+1)%3)*10+ta_res_i%10; ta_disp_gen++; mx_save(); }   /* v15zzz: A troca WINDOW -> FULLSCREEN -> BORDERLESS */
             else if(pr&K_LR){ int d=(pr&K_RT)?1:-1; int ch=0;
-                if(mx_vact==V_RES){ ta_res_i=(ta_res_i+d+30)%30; ch=1; }   /* esquerda/direita percorre as 10 resolucoes em JANELA, depois em TELA CHEIA, depois em BORDERLESS (como antes, +10); A pula direto para o proximo modo */
+                if(mx_vact==V_RES){ ta_res_i=(ta_res_i/10)*10+((ta_res_i%10)+d+10)%10; ch=1; }   /* RESOLUTION: so a resolucao */
+                else if(mx_vact==V_SCR){ ta_res_i=((ta_res_i/10+d+3)%3)*10+ta_res_i%10; ch=1; }   /* SCREEN: WINDOW / FULLSCREEN / BORDERLESS */
                 else if(mx_vact==V_ASP){ ta_aspect=(ta_aspect+d+3)%3; ch=1; }
                 else if(mx_vact==V_UPS){ int lv=mx_up_level()+d; if(lv<0) lv=0; if(lv>7) lv=7; ta_upscale=mx_up_pct[lv]; ch=1; }
                 else if(mx_vact==V_FPS){ ta_aa_mode=(ta_aa_mode+d+5)%5; ch=1; }
