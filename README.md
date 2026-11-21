@@ -10,7 +10,7 @@ A fan project that statically recompiles the SH-4 code of *Crazy Taxi 2* (Dreamc
 - Static SH-4 → C translation (99.8% of 2,865 functions fully translated), with a minimal Dreamcast hardware model (PVR/TA, AICA audio + ADX, GD-ROM, Maple controllers, VMU).
 - **Direct3D 11 renderer** with GPU-side anti-aliasing (BASIC / FXAA / SSAA) and direct presentation (4K capable); automatic software-renderer fallback.
 - Resolutions up to 3840×2160, windowed / fullscreen (F11), 4:3 / 16:9 stretched / pillarbox / widescreen (side objects are no longer culled).
-- XInput and generic gamepads (PlayStation, Switch Pro, generic), keyboard.
+- XInput and generic gamepads (PlayStation, Switch Pro, generic), keyboard. Controls are now **remappable** (keyboard and XInput) in Options > Controller Setting: press Y on the pad or Enter on the keyboard to customize.
 - Native extra menu entries (CHEATS, PLAY AS YOU LIKE, TYPE C controls, resolution, aspect, upscale, anti-aliasing).
 - Launcher that validates your disc, extracts it and builds the game.
 
@@ -49,7 +49,7 @@ Projeto de fã que recompila estaticamente o código SH-4 do *Crazy Taxi 2* (Dre
 - Tradução estática SH-4 → C (99,8% das 2.865 funções traduzidas por completo), com um modelo mínimo do hardware do Dreamcast (PVR/TA, áudio AICA + ADX, GD-ROM, controles Maple, VMU).
 - **Renderizador Direct3D 11** com antialiasing na GPU (BASIC / FXAA / SSAA) e apresentação direta (roda em 4K); volta sozinho ao renderizador por software se necessário.
 - Resoluções até 3840×2160, janela / tela cheia (F11), 4:3 / 16:9 esticado / barras laterais / widescreen (objetos laterais não somem mais).
-- Controles XInput e genéricos (PlayStation, Switch Pro, genérico) e teclado.
+- Controles XInput e genéricos (PlayStation, Switch Pro, genérico) e teclado. Agora os controles são **mapeáveis** (teclado e XInput) em Options > Controller Setting: aperte Y no controle ou Enter no teclado para personalizar.
 - Opções extras nativas nos menus (CHEATS, PLAY AS YOU LIKE, controle TYPE C, resolução, aspecto, upscale, antialiasing).
 - Launcher que valida o disco, extrai e compila o jogo.
 
