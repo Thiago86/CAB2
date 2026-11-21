@@ -486,6 +486,7 @@ static void aa_job(void*arg,int j){
                     int r=cr+((ar-cr)*bl>>8), g=cg+((ag-cg)*bl>>8), b=cb+((ab-cb)*bl>>8); o=0xFF000000u|((uint32_t)r<<16)|((uint32_t)g<<8)|(uint32_t)b; } }
             aab[y*AW+x]=o; } }
 }
+int ta_direct_frame=0;   /* v15zzze: 1 = o quadro ficou na GPU (apresentacao direta); fb nao foi preenchido */
 int ta_bri_lv=5;   /* BRIGHT do menu de pausa: 0..10, 5 = neutro */
 static const uint32_t *aa_finish2(void);
 static const uint32_t *aa_finish(void){
@@ -626,8 +627,9 @@ static const uint32_t *render_impl(const uint8_t*vram,const uint32_t*pal,uint32_
         if(!use_gpu) for(int i=0;i<RW*RH;i++) zb[i]=-1.f;
       } }
     static const int order[3]={0,4,2};
-    if(use_gpu){ if(!gpu_draw(vram,pal,palctl)){ for(int i=0;i<RW*RH;i++) fb[i]=ta_bars_black?0xFF000000u:0xFF202020u; } } else render_bands(vram,pal,palctl,order);
-    if(!dual3d && !snap_used && ntri>1500 && (!have_scene||(ta_cur_frame&7)==0||(size_t)RW*RH<2000000)){ memcpy(lastscene,fb,(size_t)RW*RH*4); ls_w=RW; ls_h=RH; have_scene=1; }   /* v15zzzd: em 2K/4K copia so 1 quadro em 8 (a copia serve so ao fundo do menu de pausa; 33 MB por quadro em 4K) */
+    int direct=0; ta_direct_frame=0;
+    if(use_gpu){ direct=gpu_direct_ok(); if(!gpu_draw(vram,pal,palctl)){ direct=0; for(int i=0;i<RW*RH;i++) fb[i]=ta_bars_black?0xFF000000u:0xFF202020u; } } else { gpu_direct_off(); render_bands(vram,pal,palctl,order); }
+    if(!dual3d && !snap_used && ntri>1500 && (!have_scene||(ta_cur_frame&7)==0||(size_t)RW*RH<2000000||direct)){ if(direct) gpu_snap_capture(); else memcpy(lastscene,fb,(size_t)RW*RH*4); ls_w=RW; ls_h=RH; have_scene=1; }   /* v15zzzd: em 2K/4K copia so 1 quadro em 8 (a copia serve so ao fundo do menu de pausa; 33 MB por quadro em 4K) */
     if(ZT){ for(int l=0;l<5;l++) for(int m=0;m<8;m++) if(zh_t[l][m]){ printf("ZH list=%d dm=%d tests=%u ties=%u tiefail=%u\n",l,m,zh_t[l][m],zh_tie[l][m],zh_tiefail[l][m]); } memset(zh_t,0,sizeof zh_t); memset(zh_tie,0,sizeof zh_tie); memset(zh_tiefail,0,sizeof zh_tiefail); printf("ZTIE frame %u: lose=%u win=%u\n",ta_cur_frame,zt_n,zt_w); ZT=0; }
     if(save_live){ save_live=0; FILE*pf=fopen("glitch_frame.ppm","wb"); if(pf){ fprintf(pf,"P6\n%d %d\n255\n",RW,RH); for(int i=0;i<RW*RH;i++){ unsigned char p3[3]={(unsigned char)(fb[i]>>16),(unsigned char)(fb[i]>>8),(unsigned char)fb[i]}; fwrite(p3,1,3,pf); } fclose(pf); }
         int nsh=0,nmesh=nmv?mvs[nmv-1].mesh+1:0; for(int i=0;i<RW*RH;i++) nsh+=shb[i]; FILE*lf=fopen("glitch_info.txt","w"); if(lf){ fprintf(lf,"quadro %u canvas %dx%d RBX=%.1f RS=%.2f upscale=%d aspect=%d res=%d tris=%zu mv=%zu malhas=%d pixels_receptores=%d sombra=%.2f\n",ta_cur_frame,RW,RH,RBX,RS,ta_upscale,ta_aspect,ta_res_i,ntri,nmv,nmesh,nsh,ta_shad); fclose(lf); } printf("[dump] glitch_frame.ppm + glitch_info.txt\n"); }
@@ -640,6 +642,9 @@ static const uint32_t *render_impl(const uint8_t*vram,const uint32_t*pal,uint32_
             tris=st; ntri=sn; nmv=sm; captri=sc_; }
         if(!snap_used && ntri_all>1500 && (!have_scene||(ta_cur_frame&7)==0||(size_t)RW*RH<2000000)){ memcpy(lastscene,fb,(size_t)RW*RH*4); ls_w=RW; ls_h=RH; have_scene=1; }
         return fb; }
+    if(direct){   /* v15zzze: pos-processamento e apresentacao na GPU */
+        int m=ta_aa_mode; if(m<=0||m>4||aa_skip) m=0; else if(m>=3) m=(RW==OW&&RH==OH)?2:3;
+        float gain=(ta_bri_lv!=5)?0.5f+ta_bri_lv*0.1f:1.0f; gpu_post_set(m,RW,RH,OW,OH,gain); ta_direct_frame=1; return fb; }
     return aa_finish();
 }
 int ta_render(const char *path,const uint8_t*vram,const uint32_t*pal,uint32_t palctl,unsigned *ntris_out){

@@ -12,6 +12,12 @@ static int gpu_ready(void){ return 0; }
 static int gpu_bg_add(const Tri*t){ (void)t; return 0; }
 static int gpu_draw(const uint8_t*vram,const uint32_t*pal,uint32_t palctl){ (void)vram;(void)pal;(void)palctl; return 0; }
 const char *ta_gpu_name(void){ return "SOFTWARE"; }
+static int gpu_direct_ok(void){ return 0; }
+static void gpu_direct_off(void){}
+static void gpu_snap_capture(void){}
+static void gpu_post_set(int m,int rw,int rh,int ow,int oh,float g){ (void)m;(void)rw;(void)rh;(void)ow;(void)oh;(void)g; }
+int ta_gpu_present(int redo){ (void)redo; return 0; }
+int ta_direct_active(void){ return 0; }
 #else
 #define COBJMACROS
 #include <stdarg.h>
@@ -47,6 +53,14 @@ static GV *g_gv=0; static size_t g_gvn=0,g_gvcap=0;
 typedef struct { size_t start,count; int list; const TC*tc; int snap; int fil,um,vm,bias; int dm,zw; int sf,df; } GBatch;
 static GBatch *g_gb=0; static size_t g_gbn=0,g_gbcap=0;
 static Tri g_bg[2]; static int g_nbg=0;
+/* v15zzze: apresentacao direta (sem ler o quadro de volta para a CPU) */
+static int g_direct=0;   /* 0 = ainda nao tentou, 1 = ativa, -1 = desligada */
+static IDXGISwapChain *g_sc=0; static ID3D11RenderTargetView *g_bbrtv=0; static int g_swW=0,g_swH=0;
+static ID3D11ShaderResourceView *g_srv0=0, *g_psrc=0, *g_snapsrc=0;
+static ID3D11Texture2D *g_rt2=0; static ID3D11RenderTargetView *g_rtv2=0; static ID3D11ShaderResourceView *g_srv2=0; static int g_rt2w=0,g_rt2h=0;
+static ID3D11VertexShader *g_vsp=0; static ID3D11PixelShader *g_psp=0,*g_pspr=0; static ID3D11Buffer *g_cbp=0; static ID3D11BlendState *g_bsP=0; static ID3D11SamplerState *g_smpL=0;
+static ID3D11Texture2D *g_lastT=0; static ID3D11ShaderResourceView *g_lastSRV=0; static int g_lastw=0,g_lasth=0,g_lastok=0;
+static int g_pm=0,g_prw=0,g_prh=0,g_pow=0,g_poh=0; static float g_pgain=1.f;
 
 static void glog(const char*f,...){ if(!g_log) g_log=fopen("gpu.log","w"); if(!g_log) return; va_list ap; va_start(ap,f); vfprintf(g_log,f,ap); va_end(ap); fflush(g_log); }
 #define GREL(p) do{ if(p){ IUnknown *u_=(IUnknown*)(p); u_->lpVtbl->Release(u_); (p)=0; } }while(0)
@@ -156,14 +170,15 @@ static ID3D11ShaderResourceView *gpu_tex(TC*e){
 
 static int gpu_targets(void){
     if(g_w==RW&&g_h==RH&&g_rt0) return 1;
-    GREL(g_srv1); GREL(g_rtv0); GREL(g_rtv1); GREL(g_dsv); GREL(g_rt0); GREL(g_rt1); GREL(g_ds); GREL(g_stg);
+    GREL(g_srv0); g_psrc=0; GREL(g_srv1); GREL(g_rtv0); GREL(g_rtv1); GREL(g_dsv); GREL(g_rt0); GREL(g_rt1); GREL(g_ds); GREL(g_stg);
     D3D11_TEXTURE2D_DESC td; memset(&td,0,sizeof td); td.Width=RW; td.Height=RH; td.MipLevels=1; td.ArraySize=1; td.SampleDesc.Count=1; td.Usage=D3D11_USAGE_DEFAULT;
-    td.Format=DXGI_FORMAT_B8G8R8A8_UNORM; td.BindFlags=D3D11_BIND_RENDER_TARGET; GCK(ID3D11Device_CreateTexture2D(g_dev,&td,0,&g_rt0),"rt0");
+    td.Format=DXGI_FORMAT_B8G8R8A8_UNORM; td.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE; GCK(ID3D11Device_CreateTexture2D(g_dev,&td,0,&g_rt0),"rt0");
     td.Format=DXGI_FORMAT_R8_UNORM; td.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE; GCK(ID3D11Device_CreateTexture2D(g_dev,&td,0,&g_rt1),"rt1");
     td.Format=DXGI_FORMAT_D24_UNORM_S8_UINT; td.BindFlags=D3D11_BIND_DEPTH_STENCIL; GCK(ID3D11Device_CreateTexture2D(g_dev,&td,0,&g_ds),"ds");
     td.Format=DXGI_FORMAT_B8G8R8A8_UNORM; td.BindFlags=0; td.Usage=D3D11_USAGE_STAGING; td.CPUAccessFlags=D3D11_CPU_ACCESS_READ; GCK(ID3D11Device_CreateTexture2D(g_dev,&td,0,&g_stg),"staging");
     GCK(ID3D11Device_CreateRenderTargetView(g_dev,(ID3D11Resource*)g_rt0,0,&g_rtv0),"rtv0"); GCK(ID3D11Device_CreateRenderTargetView(g_dev,(ID3D11Resource*)g_rt1,0,&g_rtv1),"rtv1");
     GCK(ID3D11Device_CreateDepthStencilView(g_dev,(ID3D11Resource*)g_ds,0,&g_dsv),"dsv"); GCK(ID3D11Device_CreateShaderResourceView(g_dev,(ID3D11Resource*)g_rt1,0,&g_srv1),"srv1");
+    if(FAILED(ID3D11Device_CreateShaderResourceView(g_dev,(ID3D11Resource*)g_rt0,0,&g_srv0))){ g_srv0=0; glog("aviso: srv do rt0 indisponivel (apresentacao direta desligada)\n"); }
     g_w=RW; g_h=RH; glog("alvos %dx%d\n",RW,RH); return 1; }
 
 static int gpu_ready(void){
@@ -196,7 +211,7 @@ static void gpu_quad(ID3D11DepthStencilState*ds,UINT ref,int scissor,int x0,int 
 static void gpu_draw_batches(int list){
     for(size_t i=0;i<g_gbn;i++){ const GBatch*b=&g_gb[i]; if(b->list!=list) continue;
         ID3D11ShaderResourceView *srv=g_white; ID3D11SamplerState *sm=0;
-        if(b->snap){ srv=g_snap?g_snap:g_white; sm=g_smpSnap; }
+        if(b->snap){ srv=g_snapsrc?g_snapsrc:(g_snap?g_snap:g_white); sm=g_smpSnap; }
         else if(b->tc){ ID3D11ShaderResourceView *v=gpu_tex((TC*)b->tc); if(v){ srv=v; sm=gpu_sampler(b->fil,b->um,b->vm,b->bias); } }
         if(!sm) sm=gpu_sampler(0,1,1,0);
         ID3D11DeviceContext_PSSetShaderResources(g_ctx,0,1,&srv); ID3D11DeviceContext_PSSetSamplers(g_ctx,0,1,&sm);
@@ -238,7 +253,9 @@ static int gpu_draw(const uint8_t*vram,const uint32_t*pal,uint32_t palctl){
     if(need>g_vbcap){ GREL(g_vb); g_vbcap=need*2; D3D11_BUFFER_DESC bd; memset(&bd,0,sizeof bd); bd.ByteWidth=(UINT)g_vbcap; bd.Usage=D3D11_USAGE_DYNAMIC; bd.BindFlags=D3D11_BIND_VERTEX_BUFFER; bd.CPUAccessFlags=D3D11_CPU_ACCESS_WRITE; if(FAILED(ID3D11Device_CreateBuffer(g_dev,&bd,0,&g_vb))){ g_dead=1; glog("ERRO vertex buffer\n"); return 0; } }
     { D3D11_MAPPED_SUBRESOURCE ms; if(FAILED(ID3D11DeviceContext_Map(g_ctx,(ID3D11Resource*)g_vb,0,D3D11_MAP_WRITE_DISCARD,0,&ms))){ g_dead=1; glog("ERRO Map vb\n"); return 0; } memcpy(ms.pData,g_gv,g_gvn*sizeof(GV)); ID3D11DeviceContext_Unmap(g_ctx,(ID3D11Resource*)g_vb,0); }
     /* snapshot do ultimo quadro 3D (fundo do menu de pausa) */
-    if(snap_used&&have_scene){ if(!g_snapT||g_snapw!=ls_w||g_snaph!=ls_h){ GREL(g_snap); GREL(g_snapT); D3D11_TEXTURE2D_DESC td; memset(&td,0,sizeof td); td.Width=ls_w; td.Height=ls_h; td.MipLevels=1; td.ArraySize=1; td.Format=DXGI_FORMAT_B8G8R8A8_UNORM; td.SampleDesc.Count=1; td.Usage=D3D11_USAGE_DEFAULT; td.BindFlags=D3D11_BIND_SHADER_RESOURCE;
+    g_snapsrc=0;
+    if(snap_used&&have_scene&&g_direct>0&&g_lastok&&g_lastSRV&&g_lastw==ls_w&&g_lasth==ls_h){ g_snapsrc=g_lastSRV; if(!g_smpSnap) g_smpSnap=gpu_sampler(0,1,1,0); }   /* v15zzze: fundo do menu de pausa copiado na propria GPU */
+    else if(snap_used&&have_scene){ if(!g_snapT||g_snapw!=ls_w||g_snaph!=ls_h){ GREL(g_snap); GREL(g_snapT); D3D11_TEXTURE2D_DESC td; memset(&td,0,sizeof td); td.Width=ls_w; td.Height=ls_h; td.MipLevels=1; td.ArraySize=1; td.Format=DXGI_FORMAT_B8G8R8A8_UNORM; td.SampleDesc.Count=1; td.Usage=D3D11_USAGE_DEFAULT; td.BindFlags=D3D11_BIND_SHADER_RESOURCE;
             if(SUCCEEDED(ID3D11Device_CreateTexture2D(g_dev,&td,0,&g_snapT))&&SUCCEEDED(ID3D11Device_CreateShaderResourceView(g_dev,(ID3D11Resource*)g_snapT,0,&g_snap))){ g_snapw=ls_w; g_snaph=ls_h; } else { GREL(g_snapT); } }
         if(g_snapT) ID3D11DeviceContext_UpdateSubresource(g_ctx,(ID3D11Resource*)g_snapT,0,0,lastscene,(UINT)(ls_w*4),0);
         if(!g_smpSnap) g_smpSnap=gpu_sampler(0,1,1,0); }
@@ -282,11 +299,144 @@ static int gpu_draw(const uint8_t*vram,const uint32_t*pal,uint32_t palctl){
     }
     gpu_draw_batches(2);
     (void)vstart; (void)nmesh;
+    if(g_direct>0){ g_nbg=0; { static int first=1; if(first){ first=0; glog("primeiro quadro desenhado na GPU em modo de apresentacao direta (%dx%d)\n",RW,RH); } } return 1; }   /* v15zzze */
     /* devolve o quadro */
     ID3D11DeviceContext_CopyResource(g_ctx,(ID3D11Resource*)g_stg,(ID3D11Resource*)g_rt0);
     { D3D11_MAPPED_SUBRESOURCE ms; if(FAILED(ID3D11DeviceContext_Map(g_ctx,(ID3D11Resource*)g_stg,0,D3D11_MAP_READ,0,&ms))){ g_dead=1; glog("ERRO Map staging\n"); g_nbg=0; return 0; }
         for(int y=0;y<RH;y++) memcpy(fb+(size_t)y*RW,(const uint8_t*)ms.pData+(size_t)y*ms.RowPitch,(size_t)RW*4); ID3D11DeviceContext_Unmap(g_ctx,(ID3D11Resource*)g_stg,0); }
     g_nbg=0;
     { static int first=1; if(first){ first=0; glog("primeiro quadro desenhado na GPU (%dx%d, %zu vertices, %zu lotes, %d malhas de sombra)\n",RW,RH,g_gvn,g_gbn,nmesh); } }
+    return 1; }
+
+/* ===== v15zzze: apresentacao direta =====
+   Antes: GPU -> leitura de volta para a CPU (33 MB em 4K) -> antialiasing/brilho na CPU -> copia -> GDI.
+   Agora: o quadro fica na GPU; um passe de pos-processamento (BASIC / FXAA / reducao SSAA + brilho, mesmas formulas da CPU) e um passe
+   de escala (barras pretas conforme o aspecto) desenham direto numa swap chain da janela. Qualquer falha desliga o modo e volta ao
+   caminho antigo. Desligar na mao: variavel CT2_GPUDIRECT=0 ou arquivo vazio "no_direct.txt" ao lado do exe. */
+extern void *win_hwnd(void);
+static const char *g_hlsl_post =
+"cbuffer P:register(b0){ uint mode; uint rw; uint rh; uint ow; uint oh; float gain; float2 pad; };\n"
+"Texture2D tx:register(t0); SamplerState sm:register(s0);\n"
+"struct VP{ float4 p:SV_Position; float2 uv:TEXCOORD0; };\n"
+"VP vsp(uint id:SV_VertexID){ VP o; float2 t=float2((id<<1u)&2u,id&2u); o.p=float4(t*float2(2.0,-2.0)+float2(-1.0,1.0),0.0,1.0); o.uv=t; return o; }\n"
+"float3 ld(int2 q){ q=clamp(q,int2(0,0),int2((int)rw-1,(int)rh-1)); return tx.Load(int3(q,0)).rgb; }\n"
+"float lm(float3 c){ return dot(c,float3(0.30078125,0.5859375,0.11328125))*255.0; }\n"
+"float4 psp(VP i):SV_Target{\n"
+"  int2 q=int2(i.p.xy); float3 o;\n"
+"  if(mode>=3u){ uint x=(uint)q.x; uint y=(uint)q.y; uint sx0=x*rw/ow; uint sx1=(x+1u)*rw/ow; uint sy0=y*rh/oh; uint sy1=(y+1u)*rh/oh;\n"
+"    if(sx1<=sx0) sx1=sx0+1u; if(sx1>rw) sx1=rw; if(sy1<=sy0) sy1=sy0+1u; if(sy1>rh) sy1=rh;\n"
+"    float3 acc=float3(0.0,0.0,0.0); uint cnt=0u;\n"
+"    [loop] for(uint yy=sy0;yy<sy1;yy++){ [loop] for(uint xx=sx0;xx<sx1;xx++){ acc+=tx.Load(int3((int)xx,(int)yy,0)).rgb; cnt++; } }\n"
+"    o=acc/(float)max(cnt,1u); }\n"
+"  else { float3 c=ld(q); o=c;\n"
+"    if(mode!=0u){ float3 n=ld(q+int2(0,-1)); float3 s=ld(q+int2(0,1)); float3 w=ld(q+int2(-1,0)); float3 e=ld(q+int2(1,0));\n"
+"      float lc=lm(c); float ln=lm(n); float ls=lm(s); float lw=lm(w); float le=lm(e);\n"
+"      float mx=max(max(max(lc,ln),max(ls,lw)),le); float mn=min(min(min(lc,ln),min(ls,lw)),le); float rg=mx-mn;\n"
+"      if(mode==1u){ if(rg>=24.0) o=(c*4.0+n+s+w+e)*0.125; }\n"
+"      else { float thr=max(mx*0.125,8.0);\n"
+"        if(rg>=thr){ float3 nw=ld(q+int2(-1,-1)); float3 ne=ld(q+int2(1,-1)); float3 sw=ld(q+int2(-1,1)); float3 se=ld(q+int2(1,1));\n"
+"          float3 av=(n+s+w+e+nw+ne+sw+se)*0.125; float avl=(ln+ls+lw+le)*0.25; float d=abs(avl-lc); float bl=min(d/max(rg,1.0),1.0);\n"
+"          bl=bl*0.75+(bl>0.0?0.125:0.0); bl=min(bl,1.0); o=lerp(c,av,bl); } } } }\n"
+"  return float4(saturate(o*gain),1.0); }\n"
+"float4 pspr(VP i):SV_Target{ return float4(tx.Sample(sm,i.uv).rgb,1.0); }\n";
+
+static ID3DBlob *g_cmpblob2(const char*src,const char*ent,const char*prof){
+    PFN_D3DCOMPILE_ fn=(PFN_D3DCOMPILE_)GetProcAddress(g_cmp,"D3DCompile"); if(!fn) return 0;
+    ID3DBlob *code=0,*err=0; HRESULT hr=fn(src,strlen(src),"ct2post.hlsl",0,0,ent,prof,0,0,&code,&err);
+    if(FAILED(hr)){ glog("shader %s/%s falhou: %s\n",ent,prof,err?(const char*)err->lpVtbl->GetBufferPointer(err):"?"); if(err) err->lpVtbl->Release(err); return 0; }
+    if(err) err->lpVtbl->Release(err); return code; }
+
+static int gpu_post_init(void){
+    if(g_vsp) return 1; if(!g_cmp||!g_dev) return 0;
+    ID3DBlob *bv=g_cmpblob2(g_hlsl_post,"vsp","vs_4_0"),*bp=g_cmpblob2(g_hlsl_post,"psp","ps_4_0"),*br=g_cmpblob2(g_hlsl_post,"pspr","ps_4_0"); if(!bv||!bp||!br) return 0;
+    GCK(ID3D11Device_CreateVertexShader(g_dev,bv->lpVtbl->GetBufferPointer(bv),bv->lpVtbl->GetBufferSize(bv),0,&g_vsp),"CreateVertexShader vsp");
+    GCK(ID3D11Device_CreatePixelShader(g_dev,bp->lpVtbl->GetBufferPointer(bp),bp->lpVtbl->GetBufferSize(bp),0,&g_psp),"CreatePixelShader psp");
+    GCK(ID3D11Device_CreatePixelShader(g_dev,br->lpVtbl->GetBufferPointer(br),br->lpVtbl->GetBufferSize(br),0,&g_pspr),"CreatePixelShader pspr");
+    { D3D11_BUFFER_DESC bd; memset(&bd,0,sizeof bd); bd.ByteWidth=32; bd.Usage=D3D11_USAGE_DEFAULT; bd.BindFlags=D3D11_BIND_CONSTANT_BUFFER; GCK(ID3D11Device_CreateBuffer(g_dev,&bd,0,&g_cbp),"CreateBuffer cbp"); }
+    { D3D11_BLEND_DESC b; memset(&b,0,sizeof b); b.RenderTarget[0].BlendEnable=FALSE; b.RenderTarget[0].SrcBlend=D3D11_BLEND_ONE; b.RenderTarget[0].DestBlend=D3D11_BLEND_ZERO; b.RenderTarget[0].BlendOp=D3D11_BLEND_OP_ADD;
+      b.RenderTarget[0].SrcBlendAlpha=D3D11_BLEND_ONE; b.RenderTarget[0].DestBlendAlpha=D3D11_BLEND_ZERO; b.RenderTarget[0].BlendOpAlpha=D3D11_BLEND_OP_ADD; b.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;
+      GCK(ID3D11Device_CreateBlendState(g_dev,&b,&g_bsP),"blend post"); }
+    { D3D11_SAMPLER_DESC d; memset(&d,0,sizeof d); d.Filter=D3D11_FILTER_MIN_MAG_MIP_LINEAR; d.AddressU=D3D11_TEXTURE_ADDRESS_CLAMP; d.AddressV=D3D11_TEXTURE_ADDRESS_CLAMP; d.AddressW=D3D11_TEXTURE_ADDRESS_CLAMP; d.ComparisonFunc=D3D11_COMPARISON_NEVER; d.MaxLOD=D3D11_FLOAT32_MAX; d.MaxAnisotropy=1;
+      GCK(ID3D11Device_CreateSamplerState(g_dev,&d,&g_smpL),"sampler linear"); }
+    return 1; }
+
+static int gpu_sc_create(HWND h,int w,int ht){
+    static const GUID iidD={0x54ec77fa,0x1377,0x44e6,{0x8c,0x32,0x88,0xfd,0x5f,0x44,0xc8,0x4c}};
+    static const GUID iidF={0x7b7166ec,0x21c7,0x44ae,{0xb2,0x1a,0xc9,0xae,0x32,0x1a,0xe3,0x69}};
+    IDXGIDevice *dd=0; IDXGIAdapter *ad=0; IDXGIFactory *fa=0; int ok=0;
+    if(SUCCEEDED(((IUnknown*)g_dev)->lpVtbl->QueryInterface((IUnknown*)g_dev,&iidD,(void**)&dd))&&dd){
+        if(SUCCEEDED(dd->lpVtbl->GetAdapter(dd,&ad))&&ad){
+            if(SUCCEEDED(ad->lpVtbl->GetParent(ad,&iidF,(void**)&fa))&&fa){
+                DXGI_SWAP_CHAIN_DESC sd; memset(&sd,0,sizeof sd); sd.BufferDesc.Width=(UINT)w; sd.BufferDesc.Height=(UINT)ht; sd.BufferDesc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;
+                sd.SampleDesc.Count=1; sd.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT; sd.BufferCount=1; sd.OutputWindow=h; sd.Windowed=TRUE; sd.SwapEffect=DXGI_SWAP_EFFECT_DISCARD;
+                if(SUCCEEDED(fa->lpVtbl->CreateSwapChain(fa,(IUnknown*)g_dev,&sd,&g_sc))&&g_sc){ fa->lpVtbl->MakeWindowAssociation(fa,h,3u); ok=1; } } } }
+    if(fa) ((IUnknown*)fa)->lpVtbl->Release((IUnknown*)fa); if(ad) ((IUnknown*)ad)->lpVtbl->Release((IUnknown*)ad); if(dd) ((IUnknown*)dd)->lpVtbl->Release((IUnknown*)dd);
+    if(ok){ g_swW=w; g_swH=ht; } return ok; }
+
+static void gpu_direct_off(void){
+    if(!g_sc&&g_direct!=1) return;
+    ID3D11DeviceContext_ClearState(g_ctx); GREL(g_bbrtv); GREL(g_sc); g_swW=g_swH=0; g_psrc=0; g_lastok=0; if(g_direct>0) g_direct=0; }
+
+static int gpu_direct_ok(void){
+    if(g_direct) return g_direct>0;
+    { const char*e=GENV("CT2_GPUDIRECT"); if(e&&e[0]=='0'){ g_direct=-1; return 0; } }
+    { FILE*nf=fopen("no_direct.txt","rb"); if(nf){ fclose(nf); g_direct=-1; glog("apresentacao direta desligada por no_direct.txt\n"); return 0; } }
+    if(!g_dev||!g_cmp) return 0;
+    HWND h=(HWND)win_hwnd(); if(!h) return 0;               /* ainda sem janela: tenta no proximo quadro */
+    RECT rc; GetClientRect(h,&rc); if(rc.right<=0||rc.bottom<=0) return 0;   /* minimizada: tenta depois */
+    if(!gpu_targets()||!g_srv0){ g_direct=-1; glog("apresentacao direta indisponivel (alvos)\n"); return 0; }
+    if(!gpu_post_init()){ g_direct=-1; glog("apresentacao direta indisponivel (shaders de pos-processamento)\n"); return 0; }
+    if(!gpu_sc_create(h,rc.right,rc.bottom)){ g_direct=-1; glog("apresentacao direta indisponivel (swap chain)\n"); return 0; }
+    g_direct=1; glog("apresentacao direta LIGADA (swap chain %dx%d)\n",rc.right,rc.bottom); return 1; }
+
+int ta_direct_active(void){ return g_direct>0&&g_sc!=0; }
+
+/* copia o quadro bruto (antes do AA) para a GPU: fundo do menu de pausa */
+static void gpu_snap_capture(void){
+    if(!g_rt0||!g_dev) return;
+    if(!g_lastT||g_lastw!=RW||g_lasth!=RH){ GREL(g_lastSRV); GREL(g_lastT); g_lastok=0;
+        D3D11_TEXTURE2D_DESC td; memset(&td,0,sizeof td); td.Width=RW; td.Height=RH; td.MipLevels=1; td.ArraySize=1; td.Format=DXGI_FORMAT_B8G8R8A8_UNORM; td.SampleDesc.Count=1; td.Usage=D3D11_USAGE_DEFAULT; td.BindFlags=D3D11_BIND_SHADER_RESOURCE;
+        if(FAILED(ID3D11Device_CreateTexture2D(g_dev,&td,0,&g_lastT))||FAILED(ID3D11Device_CreateShaderResourceView(g_dev,(ID3D11Resource*)g_lastT,0,&g_lastSRV))){ GREL(g_lastSRV); GREL(g_lastT); return; }
+        g_lastw=RW; g_lasth=RH; }
+    ID3D11DeviceContext_CopyResource(g_ctx,(ID3D11Resource*)g_lastT,(ID3D11Resource*)g_rt0); g_lastok=1; }
+
+static void gpu_post_set(int m,int rw,int rh,int ow,int oh,float g){ g_pm=m; g_prw=rw; g_prh=rh; g_pow=ow; g_poh=oh; g_pgain=g; }
+
+static void gpu_fs_pass(ID3D11RenderTargetView *rtv,float x,float y,float w,float h,ID3D11PixelShader *ps,ID3D11ShaderResourceView *srv,int linear){
+    D3D11_VIEWPORT vp; vp.TopLeftX=x; vp.TopLeftY=y; vp.Width=w; vp.Height=h; vp.MinDepth=0.f; vp.MaxDepth=1.f; float bf[4]={0,0,0,0};
+    ID3D11DeviceContext_OMSetRenderTargets(g_ctx,1,&rtv,0); ID3D11DeviceContext_RSSetViewports(g_ctx,1,&vp); ID3D11DeviceContext_RSSetState(g_ctx,g_rs);
+    ID3D11DeviceContext_OMSetBlendState(g_ctx,g_bsP,bf,0xFFFFFFFFu); ID3D11DeviceContext_OMSetDepthStencilState(g_ctx,g_dsOff,0);
+    ID3D11DeviceContext_IASetInputLayout(g_ctx,0); ID3D11DeviceContext_IASetPrimitiveTopology(g_ctx,D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    ID3D11DeviceContext_VSSetShader(g_ctx,g_vsp,0,0); ID3D11DeviceContext_PSSetShader(g_ctx,ps,0,0); ID3D11DeviceContext_PSSetConstantBuffers(g_ctx,0,1,&g_cbp);
+    if(linear) ID3D11DeviceContext_PSSetSamplers(g_ctx,0,1,&g_smpL);
+    ID3D11DeviceContext_PSSetShaderResources(g_ctx,0,1,&srv); ID3D11DeviceContext_Draw(g_ctx,3,0);
+    { ID3D11ShaderResourceView *nv=0; ID3D11DeviceContext_PSSetShaderResources(g_ctx,0,1,&nv); } }
+
+/* redo=0: quadro novo (pos-processa e mostra); redo=1: so mostra de novo o ultimo (WM_PAINT). Retorna 0 se o modo caiu (o chamador usa o caminho antigo). */
+int ta_gpu_present(int redo){
+    if(g_direct<=0||!g_sc||!g_dev) return 0;
+    HWND h=(HWND)win_hwnd(); if(!h) return 0; RECT rc; GetClientRect(h,&rc); int cw=rc.right,ch=rc.bottom; if(cw<=0||ch<=0) return 1;
+    if(cw!=g_swW||ch!=g_swH){ ID3D11DeviceContext_ClearState(g_ctx); GREL(g_bbrtv);
+        if(FAILED(g_sc->lpVtbl->ResizeBuffers(g_sc,0,(UINT)cw,(UINT)ch,DXGI_FORMAT_UNKNOWN,0))){ glog("ERRO ResizeBuffers (apresentacao direta desligada)\n"); g_direct=-1; return 0; }
+        g_swW=cw; g_swH=ch; }
+    if(!g_bbrtv){ static const GUID iidT={0x6f15aaf2,0xd208,0x4e89,{0x9a,0xb4,0x48,0x95,0x35,0xd3,0x4f,0x9c}}; ID3D11Texture2D *bb=0;
+        if(FAILED(g_sc->lpVtbl->GetBuffer(g_sc,0,&iidT,(void**)&bb))||!bb){ glog("ERRO GetBuffer\n"); g_direct=-1; return 0; }
+        HRESULT hr=ID3D11Device_CreateRenderTargetView(g_dev,(ID3D11Resource*)bb,0,&g_bbrtv); GREL(bb); if(FAILED(hr)){ glog("ERRO rtv do backbuffer\n"); g_direct=-1; return 0; } }
+    if(!redo){
+        int need=(g_pm!=0)||(g_pgain<0.999f)||(g_pgain>1.001f)||g_pow!=g_prw||g_poh!=g_prh;
+        if(!g_srv0){ g_direct=-1; return 0; }
+        if(need){
+            if(!g_rt2||g_rt2w!=g_pow||g_rt2h!=g_poh){ GREL(g_srv2); GREL(g_rtv2); GREL(g_rt2); D3D11_TEXTURE2D_DESC td; memset(&td,0,sizeof td); td.Width=g_pow; td.Height=g_poh; td.MipLevels=1; td.ArraySize=1; td.Format=DXGI_FORMAT_B8G8R8A8_UNORM; td.SampleDesc.Count=1; td.Usage=D3D11_USAGE_DEFAULT; td.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;
+                if(FAILED(ID3D11Device_CreateTexture2D(g_dev,&td,0,&g_rt2))||FAILED(ID3D11Device_CreateRenderTargetView(g_dev,(ID3D11Resource*)g_rt2,0,&g_rtv2))||FAILED(ID3D11Device_CreateShaderResourceView(g_dev,(ID3D11Resource*)g_rt2,0,&g_srv2))){ glog("ERRO alvo de pos-processamento\n"); GREL(g_srv2); GREL(g_rtv2); GREL(g_rt2); g_direct=-1; return 0; }
+                g_rt2w=g_pow; g_rt2h=g_poh; }
+            struct { unsigned int mode,rw,rh,ow,oh; float gain,p0,p1; } pc; pc.mode=(unsigned)g_pm; pc.rw=(unsigned)g_prw; pc.rh=(unsigned)g_prh; pc.ow=(unsigned)g_pow; pc.oh=(unsigned)g_poh; pc.gain=g_pgain; pc.p0=pc.p1=0.f;
+            ID3D11DeviceContext_ClearState(g_ctx); ID3D11DeviceContext_UpdateSubresource(g_ctx,(ID3D11Resource*)g_cbp,0,0,&pc,0,0);
+            gpu_fs_pass(g_rtv2,0.f,0.f,(float)g_pow,(float)g_poh,g_psp,g_srv0,0); g_psrc=g_srv2; }
+        else g_psrc=g_srv0; }
+    if(!g_psrc) return 1;
+    { int dx=0,dy=0,dw=cw,dh=ch; if(ta_aspect!=0&&g_poh>0){ float ca=(float)g_pow/(float)g_poh; if((float)dw/(float)dh>ca){ int nw=(int)(dh*ca+.5f); dx=(dw-nw)/2; dw=nw; } else { int nh=(int)(dw/ca+.5f); dy=(dh-nh)/2; dh=nh; } }
+      float blk[4]={0,0,0,1}; ID3D11DeviceContext_ClearState(g_ctx); ID3D11DeviceContext_ClearRenderTargetView(g_ctx,g_bbrtv,blk);
+      gpu_fs_pass(g_bbrtv,(float)dx,(float)dy,(float)dw,(float)dh,g_pspr,g_psrc,1); }
+    { HRESULT hr=g_sc->lpVtbl->Present(g_sc,0,0); if(hr==(HRESULT)0x887A0005||hr==(HRESULT)0x887A0007){ glog("dispositivo perdido ao apresentar (voltando ao software)\n"); g_dead=1; g_direct=-1; return 0; } }
     return 1; }
 #endif
